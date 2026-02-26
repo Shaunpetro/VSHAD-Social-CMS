@@ -1,0 +1,18 @@
+{
+  "terminal.integrated.defaultProfile.windows": "PowerShell",
+  "terminal.integrated.profiles.windows": {
+    "PowerShell": {
+      "path": "pwsh.exe",
+      "args": ["-NoLogo"]
+    }
+  },
+  "files.associations": {
+    "*.prisma": "prisma"
+  },
+  "typescript.preferences.importModuleSpecifier": "non-relative",
+  "tailwindCSS.experimental.configFile": "apps/web/tailwind.config.ts",
+  "css.validate": false,
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "editor.formatOnSave": true,
+  "prisma.pinToPrisma6": true
+}
