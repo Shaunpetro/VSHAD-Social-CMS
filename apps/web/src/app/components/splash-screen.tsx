@@ -1,4 +1,3 @@
-// apps/web/src/app/components/splash-screen.tsx
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -50,22 +49,21 @@ export function SplashScreen({ children }: { children: React.ReactNode }) {
             exit={{ opacity: 0 }}
             transition={{ duration: 0.5 }}
           >
-            {/* Background Image */}
-            <div className="absolute inset-0">
+            <div className="absolute inset-0 bg-[#0a0a0b]">
               <Image
                 src="/assets/images/splash-bg.png"
                 alt=""
                 fill
                 className="object-cover"
                 priority
+                onError={(e) => {
+                  (e.target as HTMLImageElement).style.display = 'none';
+                }}
               />
-              {/* Dark overlay for readability */}
               <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
             </div>
 
-            {/* Content */}
             <div className="relative z-10 flex flex-col items-center gap-8">
-              {/* Logo with pulse animation */}
               <motion.div
                 animate={{
                   scale: [1, 1.04, 1],
@@ -87,7 +85,6 @@ export function SplashScreen({ children }: { children: React.ReactNode }) {
                 />
               </motion.div>
 
-              {/* App Name */}
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -102,7 +99,6 @@ export function SplashScreen({ children }: { children: React.ReactNode }) {
                 </p>
               </motion.div>
 
-              {/* Progress Bar */}
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
@@ -117,7 +113,6 @@ export function SplashScreen({ children }: { children: React.ReactNode }) {
                   />
                 </div>
 
-                {/* Status Text */}
                 <motion.p
                   className="text-xs text-white/40"
                   key={statusText}
@@ -129,7 +124,6 @@ export function SplashScreen({ children }: { children: React.ReactNode }) {
                 </motion.p>
               </motion.div>
 
-              {/* Powered by ATG DesEng */}
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}

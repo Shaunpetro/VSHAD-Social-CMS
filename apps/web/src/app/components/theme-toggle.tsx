@@ -1,7 +1,4 @@
-// apps/web/src/app/components/theme-toggle.tsx
-'use client';
-
-import { useTheme } from "./providers";
+import { useTheme } from '@/app/providers';
 import { Sun, Moon, Monitor } from 'lucide-react';
 
 export function ThemeToggle() {
@@ -19,13 +16,12 @@ export function ThemeToggle() {
         <button
           key={value}
           onClick={() => setTheme(value)}
-          className={`
-            p-2 rounded-md transition-all duration-200
-            ${theme === value
+          className={
+            'p-2 rounded-md transition-all duration-200 ' +
+            (theme === value
               ? 'bg-background text-foreground shadow-sm'
-              : 'text-muted-foreground hover:text-foreground'
-            }
-          `}
+              : 'text-muted-foreground hover:text-foreground')
+          }
           aria-label={`Set ${label} theme`}
         >
           <Icon size={16} />

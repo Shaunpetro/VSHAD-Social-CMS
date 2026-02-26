@@ -1,15 +1,14 @@
-// apps/web/src/app/layout.tsx
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
-import { ThemeProvider } from './components/providers';
+import { ThemeProvider } from './providers';
 import { SplashScreen } from './components/splash-screen';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-sans' });
 
 export const metadata: Metadata = {
   title: 'VSHAD RoboSocial',
-  description: 'Automated AI-powered Social Media & Blog Posts content creation and calendar scheduler',
+  description: 'Automated AI-powered Social Media and Blog Posts content creation and calendar scheduler',
   icons: {
     icon: [
       { url: '/assets/icons/app-icon.png', sizes: '512x512' },
