@@ -1,8 +1,8 @@
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
-import { ThemeProvider } from './providers';
-import { SplashScreen } from './components/splash-screen';
+import { ThemeProvider } from '@/app/providers';
+import { SplashScreen } from '@/app/components/splash-screen';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-sans' });
 
