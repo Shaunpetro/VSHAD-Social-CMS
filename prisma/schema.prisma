@@ -1,8 +1,5 @@
-// prisma/schema.prisma
-
 generator client {
   provider = "prisma-client-js"
-  previewFeatures = ["driverAdapters"]
 }
 
 datasource db {
@@ -10,81 +7,237 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ============================================
+// AUTHENTICATION MODELS
+// ============================================
+
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
+  id        String    @id @default(cuid())
+  email     String    @unique
   name      String?
-  avatar    String?
-  createdAt DateTime @default(now())
   sessions  Session[]
-  companies Company[]
-  @@map("users")
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 }
 
 model Session {
-  id        String   @id @unique
+  id        String   @id
   userId    String
   expiresAt DateTime
-  user      User     @relation(references: [id], fields: [userId], onDelete: Cascade)
-  @@map("sessions")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
+
+// ============================================
+// COMPANY & PLATFORM MODELS
+// ============================================
 
 model Company {
   id          String   @id @default(cuid())
   name        String
-  website     String
+  website     String?
   industry    String?
-  description String?  @db.Text
-  logo        String?
-  brandVoice  String   @default("professional")
-  keywords    String[] @default([])
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  topics      Topic[]
-  connections PlatformConnection[]
-  posts       GeneratedPost[]
-  @@map("companies")
+  description String?
+  logoUrl     String?
+  userId      String   @default("temp-user-001")
+  
+  platforms       Platform[]
+  contentSettings ContentSettings?
+  generatedPosts  GeneratedPost[]
+  media           Media[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
-model Topic {
-  id           String    @id @default(cuid())
-  title        String
-  description  String?
-  scheduledFor DateTime?
-  status       String    @default("pending")
-  companyId    String
-  company      Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  @@map("topics")
+model Platform {
+  id             String       @id @default(cuid())
+  companyId      String
+  type           PlatformType
+  name           String
+  username       String?
+  isConnected    Boolean      @default(false)
+  connectionData Json?
+  lastSyncAt     DateTime?
+  
+  company        Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  generatedPosts GeneratedPost[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
-model PlatformConnection {
-  id           String    @id @default(cuid())
-  platform     String
-  accountName  String
-  accessToken  String    @db.Text
-  refreshToken String?   @db.Text
-  expiresAt    DateTime?
-  scopes       String[]
-  status       String    @default("connected")
-  config       Json?
-  companyId    String
-  company      Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  @@unique([platform, accountName, companyId])
-  @@map("platform_connections")
+enum PlatformType {
+  LINKEDIN
+  FACEBOOK
+  TWITTER
+  INSTAGRAM
+  WORDPRESS
 }
+
+// ============================================
+// CONTENT SETTINGS
+// ============================================
+
+model ContentSettings {
+  id        String @id @default(cuid())
+  companyId String @unique
+  
+  tone          String   @default("professional")
+  topics        String[]
+  keywords      String[]
+  postFrequency Int      @default(7)
+  
+  includeHashtags Boolean @default(true)
+  includeEmojis   Boolean @default(false)
+  maxLength       Int?
+  
+  brandVoice      String?
+  avoidTopics     String[]
+  
+  // Default posting times (stored as "HH:MM" strings)
+  defaultPostingTimes String[] @default(["09:00", "14:00", "18:00"])
+  timezone            String   @default("Africa/Johannesburg")
+  
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ============================================
+// MEDIA LIBRARY
+// ============================================
+
+model Media {
+  id        String    @id @default(cuid())
+  companyId String
+  
+  filename    String
+  url         String
+  thumbnailUrl String?
+  type        MediaType
+  mimeType    String?
+  size        Int         // bytes
+  width       Int?
+  height      Int?
+  altText     String?
+  
+  company     Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  postMedia   PostMedia[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@index([companyId, createdAt])
+}
+
+enum MediaType {
+  IMAGE
+  VIDEO
+  GIF
+}
+
+// ============================================
+// GENERATED POSTS & SCHEDULING
+// ============================================
 
 model GeneratedPost {
-  id           String    @id @default(cuid())
-  title        String
-  content      String    @db.Text
-  platform     String
-  status       String    @default("draft")
-  companyId    String
-  company      Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  id         String @id @default(cuid())
+  companyId  String
+  platformId String
+  
+  // Content
+  title      String?
+  content    String
+  hashtags   String[]
+  
+  // Media attachments (many-to-many)
+  postMedia  PostMedia[]
+  
+  // Scheduling
   scheduledFor DateTime?
-  postedAt     DateTime?
-  metadata     Json?
-  @@map("generated_posts")
+  publishedAt  DateTime?
+  status       PostStatus @default(DRAFT)
+  
+  // Scheduling metadata
+  isPartOfBulk   Boolean @default(false)
+  bulkScheduleId String?
+  
+  // Generation metadata
+  generatedBy String  @default("groq-llama-3.3")
+  prompt      String?
+  topic       String?
+  tone        String?
+  iteration   Int     @default(1)
+  
+  // Analytics (populated after publishing)
+  likes       Int @default(0)
+  comments    Int @default(0)
+  shares      Int @default(0)
+  impressions Int @default(0)
+  
+  // Relations
+  company  Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  platform Platform @relation(fields: [platformId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@index([companyId, status])
+  @@index([platformId, scheduledFor])
+  @@index([status, scheduledFor])
+  @@index([bulkScheduleId])
+}
+
+// Junction table for Post-Media many-to-many
+model PostMedia {
+  id      String @id @default(cuid())
+  postId  String
+  mediaId String
+  order   Int    @default(0)  // For ordering multiple media
+  
+  post    GeneratedPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  media   Media         @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+  
+  @@unique([postId, mediaId])
+  @@index([postId])
+  @@index([mediaId])
+}
+
+enum PostStatus {
+  DRAFT
+  SCHEDULED
+  PUBLISHING
+  PUBLISHED
+  FAILED
+  ARCHIVED
+}
+
+// ============================================
+// BULK SCHEDULE TRACKING
+// ============================================
+
+model BulkSchedule {
+  id        String   @id @default(cuid())
+  companyId String
+  
+  name        String?
+  startDate   DateTime
+  endDate     DateTime
+  postsCount  Int
+  timesPerDay String[]  // ["09:00", "14:00"]
+  platforms   String[]  // ["LINKEDIN", "INSTAGRAM"]
+  
+  status    BulkScheduleStatus @default(ACTIVE)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@index([companyId])
+}
+
+enum BulkScheduleStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
 }

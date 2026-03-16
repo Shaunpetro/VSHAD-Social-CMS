@@ -2,7 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Loader2, Globe, Building2, FileText, MessageSquare, Tag } from 'lucide-react';
+import {
+  X, Loader2, Globe, Building2, FileText, MessageSquare,
+  Tag, Sparkles, CheckCircle2, AlertCircle,
+} from 'lucide-react';
 
 interface Company {
   id: string;
@@ -32,6 +35,9 @@ const brandVoiceOptions = [
 
 export function CompanyForm({ open, onClose, onSuccess, editCompany }: CompanyFormProps) {
   const [loading, setLoading] = useState(false);
+  const [scraping, setScraping] = useState(false);
+  const [scrapeStatus, setScrapeStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [scrapeMessage, setScrapeMessage] = useState('');
   const [error, setError] = useState('');
   const [keywordInput, setKeywordInput] = useState('');
 
@@ -70,7 +76,79 @@ export function CompanyForm({ open, onClose, onSuccess, editCompany }: CompanyFo
     }
     setError('');
     setKeywordInput('');
+    setScrapeStatus('idle');
+    setScrapeMessage('');
   }, [editCompany, open]);
+
+  async function handleScrape() {
+    if (!form.website.trim()) {
+      setError('Enter a website URL first');
+      return;
+    }
+
+    setScraping(true);
+    setScrapeStatus('idle');
+    setScrapeMessage('');
+    setError('');
+
+    try {
+      const res = await fetch('/api/scrape', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: form.website }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Scrape failed');
+      }
+
+      const scraped = data.data;
+      let fieldsUpdated = 0;
+
+      // Only fill in empty fields — don't overwrite what user already typed
+      setForm((prev) => {
+        const updated = { ...prev };
+
+        if (!prev.name && scraped.name) {
+          updated.name = scraped.name;
+          fieldsUpdated++;
+        }
+        if (!prev.description && scraped.description) {
+          updated.description = scraped.description;
+          fieldsUpdated++;
+        }
+        if (!prev.industry && scraped.industry) {
+          updated.industry = scraped.industry;
+          fieldsUpdated++;
+        }
+        if (!prev.logo && scraped.logo) {
+          updated.logo = scraped.logo;
+          fieldsUpdated++;
+        }
+        if (prev.keywords.length === 0 && scraped.keywords.length > 0) {
+          updated.keywords = scraped.keywords;
+          fieldsUpdated++;
+        }
+
+        return updated;
+      });
+
+      const sourceLabel = data.source === 'firecrawl' ? 'Firecrawl AI' : 'domain analysis';
+      setScrapeStatus('success');
+      setScrapeMessage(
+        fieldsUpdated > 0
+          ? `Auto-filled ${fieldsUpdated} field${fieldsUpdated !== 1 ? 's' : ''} from ${sourceLabel}`
+          : 'Scraped successfully but all fields already filled'
+      );
+    } catch (err) {
+      setScrapeStatus('error');
+      setScrapeMessage(err instanceof Error ? err.message : 'Failed to scrape website');
+    } finally {
+      setScraping(false);
+    }
+  }
 
   function addKeyword() {
     const keyword = keywordInput.trim();
@@ -161,7 +239,7 @@ export function CompanyForm({ open, onClose, onSuccess, editCompany }: CompanyFo
                 <p className="text-sm text-muted-foreground mt-0.5">
                   {editCompany
                     ? 'Update your company details'
-                    : 'Enter your company details to get started'}
+                    : 'Enter a website URL and auto-fill with Firecrawl AI'}
                 </p>
               </div>
               <button
@@ -181,6 +259,61 @@ export function CompanyForm({ open, onClose, onSuccess, editCompany }: CompanyFo
 
             {/* Form */}
             <form onSubmit={handleSubmit} className="space-y-4">
+              {/* Website + Scrape */}
+              <div>
+                <label className="flex items-center gap-2 text-sm font-medium mb-1.5">
+                  <Globe size={14} />
+                  Website URL *
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="url"
+                    value={form.website}
+                    onChange={(e) => {
+                      setForm({ ...form, website: e.target.value });
+                      setScrapeStatus('idle');
+                    }}
+                    placeholder="https://example.com"
+                    required
+                    className="flex-1 px-3 py-2 rounded-lg border border-border/60 bg-background text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-border transition-colors"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleScrape}
+                    disabled={scraping || !form.website.trim()}
+                    className="flex items-center gap-2 px-3 py-2 rounded-lg bg-secondary text-foreground text-sm font-medium hover:bg-secondary/80 transition-colors disabled:opacity-50 whitespace-nowrap"
+                  >
+                    {scraping ? (
+                      <Loader2 size={14} className="animate-spin" />
+                    ) : (
+                      <Sparkles size={14} />
+                    )}
+                    {scraping ? 'Scraping...' : 'Auto-Fill'}
+                  </button>
+                </div>
+
+                {/* Scrape Status */}
+                {scrapeStatus !== 'idle' && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className={
+                      'flex items-center gap-2 mt-2 text-xs ' +
+                      (scrapeStatus === 'success'
+                        ? 'text-green-600 dark:text-green-400'
+                        : 'text-destructive')
+                    }
+                  >
+                    {scrapeStatus === 'success' ? (
+                      <CheckCircle2 size={12} />
+                    ) : (
+                      <AlertCircle size={12} />
+                    )}
+                    {scrapeMessage}
+                  </motion.div>
+                )}
+              </div>
+
               {/* Name */}
               <div>
                 <label className="flex items-center gap-2 text-sm font-medium mb-1.5">
@@ -192,22 +325,6 @@ export function CompanyForm({ open, onClose, onSuccess, editCompany }: CompanyFo
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
                   placeholder="e.g. Acme Corporation"
-                  required
-                  className="w-full px-3 py-2 rounded-lg border border-border/60 bg-background text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-border transition-colors"
-                />
-              </div>
-
-              {/* Website */}
-              <div>
-                <label className="flex items-center gap-2 text-sm font-medium mb-1.5">
-                  <Globe size={14} />
-                  Website URL *
-                </label>
-                <input
-                  type="url"
-                  value={form.website}
-                  onChange={(e) => setForm({ ...form, website: e.target.value })}
-                  placeholder="https://example.com"
                   required
                   className="w-full px-3 py-2 rounded-lg border border-border/60 bg-background text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-border transition-colors"
                 />

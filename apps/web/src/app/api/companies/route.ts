@@ -1,17 +1,22 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/app/lib/db';  // Updated import path
+import { NextResponse } from 'next/server';
+import { prisma } from '@/lib/db';
 
-// GET /api/companies — list all companies
+// ═══════════════════════════════════════════════════════════════
+// GET /api/companies
+// Fetch all companies with their platforms
+// ═══════════════════════════════════════════════════════════════
+
 export async function GET() {
   try {
     const companies = await prisma.company.findMany({
       orderBy: { createdAt: 'desc' },
       include: {
+        platforms: true,
+        contentSettings: true,
         _count: {
           select: {
-            topics: true,
-            connections: true,
-            posts: true,
+            platforms: true,
+            generatedPosts: true,
           },
         },
       },
@@ -19,7 +24,7 @@ export async function GET() {
 
     return NextResponse.json(companies);
   } catch (error) {
-    console.error('Failed to fetch companies:', error);
+    console.error('Error fetching companies:', error);
     return NextResponse.json(
       { error: 'Failed to fetch companies' },
       { status: 500 }
@@ -27,67 +32,40 @@ export async function GET() {
   }
 }
 
-// POST /api/companies — create a new company
-export async function POST(request: NextRequest) {
+// ═══════════════════════════════════════════════════════════════
+// POST /api/companies
+// Create a new company
+// ═══════════════════════════════════════════════════════════════
+
+export async function POST(request: Request) {
   try {
     const body = await request.json();
-
-    const { name, website, industry, description, logo, brandVoice, keywords } = body;
+    const { name, website, industry, description } = body;
 
     // Validation
-    if (!name || !name.trim()) {
+    if (!name || typeof name !== 'string' || name.trim().length === 0) {
       return NextResponse.json(
         { error: 'Company name is required' },
         { status: 400 }
       );
     }
 
-    if (!website || !website.trim()) {
-      return NextResponse.json(
-        { error: 'Website URL is required' },
-        { status: 400 }
-      );
-    }
-
-    // TODO: Replace with actual authenticated user ID from Lucia
-    const TEMP_USER_ID = 'temp-user-001';
-
-    // Ensure temp user exists (development only)
-    await prisma.user.upsert({
-      where: { id: TEMP_USER_ID },
-      update: {},
-      create: {
-        id: TEMP_USER_ID,
-        email: 'dev@robosocial.app',
-        name: 'Dev User',
-      },
-    });
-
     const company = await prisma.company.create({
       data: {
         name: name.trim(),
-        website: website.trim(),
+        website: website?.trim() || null,
         industry: industry?.trim() || null,
         description: description?.trim() || null,
-        logo: logo?.trim() || null,
-        brandVoice: brandVoice || 'professional',
-        keywords: keywords || [],
-        userId: TEMP_USER_ID,
+        userId: 'temp-user-001', // TODO: Replace with real user ID from auth
       },
       include: {
-        _count: {
-          select: {
-            topics: true,
-            connections: true,
-            posts: true,
-          },
-        },
+        platforms: true,
       },
     });
 
     return NextResponse.json(company, { status: 201 });
   } catch (error) {
-    console.error('Failed to create company:', error);
+    console.error('Error creating company:', error);
     return NextResponse.json(
       { error: 'Failed to create company' },
       { status: 500 }

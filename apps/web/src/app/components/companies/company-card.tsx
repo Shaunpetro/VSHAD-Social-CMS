@@ -2,26 +2,35 @@
 
 import { motion } from 'framer-motion';
 import {
-  Building2, Globe, MessageSquare, Plug, FileText,
+  Building2, Globe, Plug, FileText,
   MoreVertical, Pencil, Trash2, ExternalLink,
 } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 
+// ═══════════════════════════════════════════════════════════════
+// Types matching current Prisma schema
+// ═══════════════════════════════════════════════════════════════
+
+interface Platform {
+  id: string;
+  type: string;
+  name: string;
+  isConnected: boolean;
+}
+
 interface Company {
   id: string;
   name: string;
-  website: string;
-  industry: string | null;
-  description: string | null;
-  logo: string | null;
-  brandVoice: string;
-  keywords: string[];
-  createdAt: string;
-  _count: {
-    topics: number;
-    connections: number;
-    posts: number;
+  website?: string | null;
+  industry?: string | null;
+  description?: string | null;
+  logoUrl?: string | null;
+  platforms?: Platform[];
+  _count?: {
+    platforms?: number;
+    generatedPosts?: number;
   };
+  createdAt: string;
 }
 
 interface CompanyCardProps {
@@ -30,6 +39,10 @@ interface CompanyCardProps {
   onEdit: (company: Company) => void;
   onDelete: (company: Company) => void;
 }
+
+// ═══════════════════════════════════════════════════════════════
+// Component
+// ═══════════════════════════════════════════════════════════════
 
 export function CompanyCard({ company, index, onEdit, onDelete }: CompanyCardProps) {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -45,15 +58,11 @@ export function CompanyCard({ company, index, onEdit, onDelete }: CompanyCardPro
     return () => document.removeEventListener('mousedown', handleClick);
   }, []);
 
-  const brandVoiceColors: Record<string, string> = {
-    professional: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
-    casual: 'bg-green-500/10 text-green-500 border-green-500/20',
-    technical: 'bg-purple-500/10 text-purple-500 border-purple-500/20',
-    friendly: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
-    authoritative: 'bg-red-500/10 text-red-500 border-red-500/20',
-  };
-
-  const voiceStyle = brandVoiceColors[company.brandVoice] || brandVoiceColors.professional;
+  // Safely access platforms with defaults
+  const platforms = company.platforms ?? [];
+  const connectedPlatforms = platforms.filter(p => p.isConnected);
+  const platformCount = company._count?.platforms ?? platforms.length;
+  const postCount = company._count?.generatedPosts ?? 0;
 
   return (
     <motion.div
@@ -66,9 +75,9 @@ export function CompanyCard({ company, index, onEdit, onDelete }: CompanyCardPro
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-secondary">
-            {company.logo ? (
+            {company.logoUrl ? (
               <img
-                src={company.logo}
+                src={company.logoUrl}
                 alt={company.name}
                 className="h-10 w-10 rounded-lg object-cover"
               />
@@ -105,16 +114,18 @@ export function CompanyCard({ company, index, onEdit, onDelete }: CompanyCardPro
                 <Pencil size={14} />
                 Edit Company
               </button>
-              <a
-                href={company.website}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={() => setMenuOpen(false)}
-                className="flex w-full items-center gap-2.5 px-3 py-2 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors"
-              >
-                <ExternalLink size={14} />
-                Visit Website
-              </a>
+              {company.website && (
+                <a
+                  href={company.website}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => setMenuOpen(false)}
+                  className="flex w-full items-center gap-2.5 px-3 py-2 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors"
+                >
+                  <ExternalLink size={14} />
+                  Visit Website
+                </a>
+              )}
               <div className="my-1 h-px bg-border/60" />
               <button
                 onClick={() => {
@@ -139,48 +150,46 @@ export function CompanyCard({ company, index, onEdit, onDelete }: CompanyCardPro
       )}
 
       {/* Website */}
-      <div className="flex items-center gap-1.5 mb-3">
-        <Globe size={12} className="text-muted-foreground" />
-        <a
-          href={company.website}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-xs text-muted-foreground hover:text-foreground truncate transition-colors"
-        >
-          {company.website.replace(/^https?:\/\//, '')}
-        </a>
-      </div>
+      {company.website && (
+        <div className="flex items-center gap-1.5 mb-3">
+          <Globe size={12} className="text-muted-foreground" />
+          <a
+            href={company.website}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs text-muted-foreground hover:text-foreground truncate transition-colors"
+          >
+            {company.website.replace(/^https?:\/\//, '')}
+          </a>
+        </div>
+      )}
 
-      {/* Brand Voice Badge */}
-      <div className="flex items-center gap-2 mb-4">
-        <span className={'px-2 py-0.5 rounded-md text-xs font-medium border ' + voiceStyle}>
-          {company.brandVoice}
-        </span>
-        {company.keywords.length > 0 && (
-          <span className="text-xs text-muted-foreground">
-            {company.keywords.length} keyword{company.keywords.length !== 1 ? 's' : ''}
-          </span>
-        )}
-      </div>
+      {/* Connected Platforms Badges */}
+      {connectedPlatforms.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mb-4">
+          {connectedPlatforms.map((platform) => (
+            <span
+              key={platform.id}
+              className="px-2 py-0.5 rounded-md text-xs font-medium bg-green-500/10 text-green-600 dark:text-green-400 border border-green-500/20"
+            >
+              {platform.type}
+            </span>
+          ))}
+        </div>
+      )}
 
       {/* Stats */}
       <div className="flex items-center gap-4 pt-3 border-t border-border/40">
         <div className="flex items-center gap-1.5">
-          <MessageSquare size={12} className="text-muted-foreground" />
-          <span className="text-xs text-muted-foreground">
-            {company._count.topics} topic{company._count.topics !== 1 ? 's' : ''}
-          </span>
-        </div>
-        <div className="flex items-center gap-1.5">
           <Plug size={12} className="text-muted-foreground" />
           <span className="text-xs text-muted-foreground">
-            {company._count.connections} platform{company._count.connections !== 1 ? 's' : ''}
+            {connectedPlatforms.length}/{platformCount} platform{platformCount !== 1 ? 's' : ''}
           </span>
         </div>
         <div className="flex items-center gap-1.5">
           <FileText size={12} className="text-muted-foreground" />
           <span className="text-xs text-muted-foreground">
-            {company._count.posts} post{company._count.posts !== 1 ? 's' : ''}
+            {postCount} post{postCount !== 1 ? 's' : ''}
           </span>
         </div>
       </div>

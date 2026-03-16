@@ -1,1 +1,47 @@
+# Dependencies
 node_modules
+.pnpm-store
+
+# Environment files (CRITICAL - contains secrets)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+apps/web/.env.local
+apps/web/.env
+
+# Build outputs
+.next
+out
+dist
+build
+.turbo
+
+# Debug logs
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Prisma
+prisma/*.db
+prisma/*.db-journal
+
+# Testing
+coverage
+.nyc_output
+
+# Misc
+*.log
+*.tsbuildinfo
