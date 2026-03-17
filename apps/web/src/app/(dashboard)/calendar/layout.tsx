@@ -15,13 +15,9 @@ import {
 import { cn } from "@/lib/utils";
 import { MediaLibraryView } from "@/app/components/calendar/media-library-view";
 import { CreatePostView } from "@/app/components/calendar/create-post-view";
+import { useCompany } from "@/app/contexts/company-context";
 
 type CalendarView = "calendar" | "create" | "drafts" | "queue" | "media";
-
-interface Company {
-  id: string;
-  name: string;
-}
 
 interface NavItem {
   id: CalendarView;
@@ -43,9 +39,10 @@ export default function CalendarLayout({
 }) {
   const [activeView, setActiveView] = useState<CalendarView>("calendar");
   const [collapsed, setCollapsed] = useState(false);
-  const [companies, setCompanies] = useState<Company[]>([]);
-  const [selectedCompanyId, setSelectedCompanyId] = useState<string>("");
   const [stats, setStats] = useState<PostStats>({ drafts: 0, scheduled: 0, published: 0 });
+
+  // Use shared company context
+  const { companies, selectedCompanyId, setSelectedCompanyId, isLoading } = useCompany();
 
   const navItems: NavItem[] = [
     { id: "calendar", label: "Calendar", icon: Calendar },
@@ -54,23 +51,6 @@ export default function CalendarLayout({
     { id: "queue", label: "Queue", icon: Clock, badge: stats.scheduled },
     { id: "media", label: "Media Library", icon: Image },
   ];
-
-  // Fetch companies
-  useEffect(() => {
-    const fetchCompanies = async () => {
-      try {
-        const res = await fetch("/api/companies");
-        if (res.ok) {
-          const data = await res.json();
-          setCompanies(data);
-          if (data.length > 0) setSelectedCompanyId(data[0].id);
-        }
-      } catch (error) {
-        console.error("Failed to fetch companies:", error);
-      }
-    };
-    fetchCompanies();
-  }, []);
 
   // Fetch stats when company changes
   useEffect(() => {
@@ -109,11 +89,11 @@ export default function CalendarLayout({
           />
         );
       case "drafts":
-        return <DraftsView companyId={selectedCompanyId} onEdit={() => setActiveView("create")} />;
+        return <DraftsView companyId={selectedCompanyId || ""} onEdit={() => setActiveView("create")} />;
       case "queue":
-        return <QueueView companyId={selectedCompanyId} />;
+        return <QueueView companyId={selectedCompanyId || ""} />;
       case "media":
-        return <MediaLibraryView companyId={selectedCompanyId} />;
+        return <MediaLibraryView companyId={selectedCompanyId || ""} />;
       default:
         return children;
     }
@@ -142,9 +122,10 @@ export default function CalendarLayout({
             <div>
               <label className="text-xs font-medium text-gray-500 uppercase tracking-wider">Company</label>
               <select
-                value={selectedCompanyId}
+                value={selectedCompanyId || ""}
                 onChange={(e) => setSelectedCompanyId(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                disabled={isLoading}
+                className="mt-1 w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white disabled:opacity-50"
               >
                 {companies.map((company) => (
                   <option key={company.id} value={company.id}>{company.name}</option>
@@ -286,7 +267,7 @@ function DraftsView({ companyId, onEdit }: { companyId: string; onEdit?: () => v
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-2">
                     <span className="px-2 py-1 bg-gray-100 dark:bg-gray-800 rounded text-xs font-medium text-gray-700 dark:text-gray-300">
-                      {draft.platform?.platformName || draft.platform?.type || "Unknown"}
+                      {draft.platform?.name || draft.platform?.type || "Unknown"}
                     </span>
                     <span className="text-xs text-gray-500">
                       {new Date(draft.createdAt).toLocaleDateString()}
@@ -448,7 +429,7 @@ function QueueView({ companyId }: { companyId: string }) {
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-2 flex-wrap">
                           <span className="px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded text-xs font-medium">
-                            {post.platform?.platformName || post.platform?.type || "Unknown"}
+                            {post.platform?.name || post.platform?.type || "Unknown"}
                           </span>
                           <span className="text-xs text-gray-500">
                             🕐 {new Date(post.scheduledFor).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
