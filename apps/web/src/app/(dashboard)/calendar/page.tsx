@@ -8,9 +8,12 @@ import {
   Loader2,
   Calendar as CalendarIcon,
   RefreshCw,
+  LayoutGrid,
+  CalendarDays,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CalendarDayCell } from "@/app/components/calendar/calendar-day-cell";
+import { CalendarWeekView } from "@/app/components/calendar/calendar-week-view";
 import { PostDetailModal } from "@/app/components/calendar/post-detail-modal";
 import { CalendarFilters } from "@/app/components/calendar/calendar-filters";
 import { BulkActions } from "@/app/components/calendar/bulk-actions";
@@ -49,6 +52,8 @@ interface Platform {
   accountName?: string | null;
 }
 
+type ViewMode = "month" | "week";
+
 const DAYS_OF_WEEK = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = [
   "January", "February", "March", "April", "May", "June",
@@ -57,7 +62,6 @@ const MONTHS = [
 
 /**
  * Converts a Date to an ISO string while preserving the local timezone.
- * This prevents the date from shifting when the user is not in UTC.
  */
 function toLocalISOString(date: Date): string {
   const year = date.getFullYear();
@@ -85,12 +89,51 @@ function getLocalDateString(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
+/**
+ * Gets the start of the week (Sunday) for a given date.
+ */
+function getWeekStart(date: Date): Date {
+  const d = new Date(date);
+  const day = d.getDay();
+  d.setDate(d.getDate() - day);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+/**
+ * Gets the end of the week (Saturday) for a given date.
+ */
+function getWeekEnd(date: Date): Date {
+  const d = new Date(date);
+  const day = d.getDay();
+  d.setDate(d.getDate() + (6 - day));
+  d.setHours(23, 59, 59, 999);
+  return d;
+}
+
+/**
+ * Formats a week range string.
+ */
+function formatWeekRange(start: Date, end: Date): string {
+  const startMonth = MONTHS[start.getMonth()];
+  const endMonth = MONTHS[end.getMonth()];
+  const startDay = start.getDate();
+  const endDay = end.getDate();
+  const year = end.getFullYear();
+
+  if (start.getMonth() === end.getMonth()) {
+    return `${startMonth} ${startDay} - ${endDay}, ${year}`;
+  }
+  return `${startMonth} ${startDay} - ${endMonth} ${endDay}, ${year}`;
+}
+
 export default function CalendarPage() {
   // Use shared company context
   const { selectedCompanyId } = useCompany();
 
   // Core state
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [viewMode, setViewMode] = useState<ViewMode>("month");
   const [posts, setPosts] = useState<Post[]>([]);
   const [platforms, setPlatforms] = useState<Platform[]>([]);
   const [loading, setLoading] = useState(true);
@@ -137,6 +180,8 @@ export default function CalendarPage() {
     try {
       const year = currentDate.getFullYear();
       const month = currentDate.getMonth();
+      
+      // Fetch a broader range to cover week view edge cases
       const startDate = new Date(year, month - 1, 1).toISOString();
       const endDate = new Date(year, month + 2, 0).toISOString();
 
@@ -178,7 +223,45 @@ export default function CalendarPage() {
     });
   }, [posts, selectedPlatforms, selectedStatuses]);
 
-  // Calendar data computation
+  // Week data computation
+  const weekData = useMemo(() => {
+    const weekStart = getWeekStart(currentDate);
+    const weekEnd = getWeekEnd(currentDate);
+    
+    const days: Array<{
+      date: Date;
+      isToday: boolean;
+      posts: Post[];
+    }> = [];
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    for (let i = 0; i < 7; i++) {
+      const date = new Date(weekStart);
+      date.setDate(weekStart.getDate() + i);
+      
+      const dateStr = getLocalDateString(date);
+      const dayPosts = filteredPosts.filter((post) => {
+        if (!post.scheduledFor) return false;
+        const postDate = new Date(post.scheduledFor);
+        return getLocalDateString(postDate) === dateStr;
+      });
+
+      const dateOnly = new Date(date);
+      dateOnly.setHours(0, 0, 0, 0);
+
+      days.push({
+        date,
+        isToday: dateOnly.getTime() === today.getTime(),
+        posts: dayPosts,
+      });
+    }
+
+    return { weekStart, weekEnd, days };
+  }, [currentDate, filteredPosts]);
+
+  // Calendar data computation (month view)
   const calendarData = useMemo(() => {
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth();
@@ -255,13 +338,24 @@ export default function CalendarPage() {
     setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
   };
 
+  const goToPrevWeek = () => {
+    const newDate = new Date(currentDate);
+    newDate.setDate(newDate.getDate() - 7);
+    setCurrentDate(newDate);
+  };
+
+  const goToNextWeek = () => {
+    const newDate = new Date(currentDate);
+    newDate.setDate(newDate.getDate() + 7);
+    setCurrentDate(newDate);
+  };
+
   const goToToday = () => {
     setCurrentDate(new Date());
   };
 
   // Post handlers
   const handlePostClick = (post: Post) => {
-    // Don't open modal if in selection mode
     if (selectionMode) {
       togglePostSelection(post.id);
       return;
@@ -313,6 +407,20 @@ export default function CalendarPage() {
     }
   };
 
+  // Handle drop with specific time (for week view)
+  const handlePostDropWithTime = async (postId: string, newDate: Date, hour: number) => {
+    const dateWithTime = new Date(
+      newDate.getFullYear(),
+      newDate.getMonth(),
+      newDate.getDate(),
+      hour,
+      0,
+      0,
+      0
+    );
+    await handlePostDrop(postId, dateWithTime);
+  };
+
   // Selection handlers
   const togglePostSelection = (postId: string) => {
     setSelectedPostIds((prev) =>
@@ -324,7 +432,6 @@ export default function CalendarPage() {
 
   const toggleSelectionMode = () => {
     if (selectionMode) {
-      // Exiting selection mode - clear selections
       setSelectedPostIds([]);
     }
     setSelectionMode(!selectionMode);
@@ -418,22 +525,35 @@ export default function CalendarPage() {
 
   // Stats
   const monthStats = useMemo(() => {
-    const monthPosts = filteredPosts.filter((post) => {
-      if (!post.scheduledFor) return false;
-      const postDate = new Date(post.scheduledFor);
-      return (
-        postDate.getMonth() === currentDate.getMonth() &&
-        postDate.getFullYear() === currentDate.getFullYear()
-      );
-    });
+    const relevantPosts = viewMode === "month"
+      ? filteredPosts.filter((post) => {
+          if (!post.scheduledFor) return false;
+          const postDate = new Date(post.scheduledFor);
+          return (
+            postDate.getMonth() === currentDate.getMonth() &&
+            postDate.getFullYear() === currentDate.getFullYear()
+          );
+        })
+      : filteredPosts.filter((post) => {
+          if (!post.scheduledFor) return false;
+          const postDate = new Date(post.scheduledFor);
+          const weekStart = getWeekStart(currentDate);
+          const weekEnd = getWeekEnd(currentDate);
+          return postDate >= weekStart && postDate <= weekEnd;
+        });
 
     return {
-      total: monthPosts.length,
-      scheduled: monthPosts.filter((p) => p.status === "SCHEDULED").length,
-      published: monthPosts.filter((p) => p.status === "PUBLISHED").length,
-      draft: monthPosts.filter((p) => p.status === "DRAFT").length,
+      total: relevantPosts.length,
+      scheduled: relevantPosts.filter((p) => p.status === "SCHEDULED").length,
+      published: relevantPosts.filter((p) => p.status === "PUBLISHED").length,
+      draft: relevantPosts.filter((p) => p.status === "DRAFT").length,
     };
-  }, [filteredPosts, currentDate]);
+  }, [filteredPosts, currentDate, viewMode]);
+
+  // Navigation label
+  const navigationLabel = viewMode === "month"
+    ? `${calendarData.monthName} ${calendarData.year}`
+    : formatWeekRange(weekData.weekStart, weekData.weekEnd);
 
   return (
     <div className="h-full flex flex-col p-6">
@@ -445,7 +565,35 @@ export default function CalendarPage() {
             Content Calendar
           </h1>
 
-          {/* Month Stats */}
+          {/* View Mode Toggle */}
+          <div className="flex items-center bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
+            <button
+              onClick={() => setViewMode("month")}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md transition-colors",
+                viewMode === "month"
+                  ? "bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm"
+                  : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+              )}
+            >
+              <LayoutGrid className="h-4 w-4" />
+              Month
+            </button>
+            <button
+              onClick={() => setViewMode("week")}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md transition-colors",
+                viewMode === "week"
+                  ? "bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm"
+                  : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+              )}
+            >
+              <CalendarDays className="h-4 w-4" />
+              Week
+            </button>
+          </div>
+
+          {/* Stats */}
           <div className="hidden md:flex items-center gap-3 ml-4">
             <div className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-50 dark:bg-blue-950 rounded-lg">
               <div className="w-2 h-2 rounded-full bg-blue-500" />
@@ -520,18 +668,18 @@ export default function CalendarPage() {
 
           <div className="flex items-center gap-1 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-lg p-1">
             <button
-              onClick={goToPrevMonth}
+              onClick={viewMode === "month" ? goToPrevMonth : goToPrevWeek}
               className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md transition-colors"
             >
               <ChevronLeft className="h-4 w-4 text-gray-600 dark:text-gray-400" />
             </button>
 
-            <span className="px-3 py-1 text-sm font-semibold text-gray-900 dark:text-white min-w-[140px] text-center">
-              {calendarData.monthName} {calendarData.year}
+            <span className="px-3 py-1 text-sm font-semibold text-gray-900 dark:text-white min-w-[180px] text-center">
+              {navigationLabel}
             </span>
 
             <button
-              onClick={goToNextMonth}
+              onClick={viewMode === "month" ? goToNextMonth : goToNextWeek}
               className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md transition-colors"
             >
               <ChevronRight className="h-4 w-4 text-gray-600 dark:text-gray-400" />
@@ -574,44 +722,55 @@ export default function CalendarPage() {
 
       {/* Calendar Grid */}
       <div className="flex-1 bg-white dark:bg-gray-950 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden flex flex-col">
-        {/* Days of Week Header */}
-        <div className="grid grid-cols-7 border-b border-gray-200 dark:border-gray-800">
-          {DAYS_OF_WEEK.map((day) => (
-            <div
-              key={day}
-              className="py-3 text-center text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider"
-            >
-              {day}
-            </div>
-          ))}
-        </div>
-
-        {/* Calendar Days */}
         {loading ? (
           <div className="flex-1 flex items-center justify-center">
             <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
           </div>
+        ) : viewMode === "month" ? (
+          <>
+            {/* Days of Week Header */}
+            <div className="grid grid-cols-7 border-b border-gray-200 dark:border-gray-800">
+              {DAYS_OF_WEEK.map((day) => (
+                <div
+                  key={day}
+                  className="py-3 text-center text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider"
+                >
+                  {day}
+                </div>
+              ))}
+            </div>
+
+            {/* Calendar Days (Month View) */}
+            <div className="flex-1 grid grid-cols-7 grid-rows-6">
+              {calendarData.days.map((day, index) => (
+                <CalendarDayCell
+                  key={index}
+                  date={day.date}
+                  isCurrentMonth={day.isCurrentMonth}
+                  isToday={day.isToday}
+                  posts={day.posts}
+                  onPostClick={handlePostClick}
+                  onPostDrop={handlePostDrop}
+                  isDragOver={dragOverDate?.toDateString() === day.date.toDateString()}
+                  onDragOver={setDragOverDate}
+                  onDragLeave={() => setDragOverDate(null)}
+                  selectionMode={selectionMode}
+                  selectedPostIds={selectedPostIds}
+                  onToggleSelection={togglePostSelection}
+                />
+              ))}
+            </div>
+          </>
         ) : (
-          <div className="flex-1 grid grid-cols-7 grid-rows-6">
-            {calendarData.days.map((day, index) => (
-              <CalendarDayCell
-                key={index}
-                date={day.date}
-                isCurrentMonth={day.isCurrentMonth}
-                isToday={day.isToday}
-                posts={day.posts}
-                onPostClick={handlePostClick}
-                onPostDrop={handlePostDrop}
-                isDragOver={dragOverDate?.toDateString() === day.date.toDateString()}
-                onDragOver={setDragOverDate}
-                onDragLeave={() => setDragOverDate(null)}
-                // Selection props
-                selectionMode={selectionMode}
-                selectedPostIds={selectedPostIds}
-                onToggleSelection={togglePostSelection}
-              />
-            ))}
-          </div>
+          /* Week View */
+          <CalendarWeekView
+            days={weekData.days}
+            onPostClick={handlePostClick}
+            onPostDrop={handlePostDropWithTime}
+            selectionMode={selectionMode}
+            selectedPostIds={selectedPostIds}
+            onToggleSelection={togglePostSelection}
+          />
         )}
       </div>
 

@@ -18,12 +18,24 @@ interface Post {
   content: string;
   status: string;
   scheduledFor: string | null;
+  publishedAt: string | null;
   topic: string | null;
+  tone: string | null;
+  hashtags: string[];
   platform: {
     id: string;
     type: string;
     name: string | null;
   } | null;
+  postMedia: Array<{
+    id: string;
+    media: {
+      id: string;
+      url: string;
+      type: string;
+      filename: string;
+    };
+  }>;
 }
 
 interface CalendarDayCellProps {
@@ -36,13 +48,15 @@ interface CalendarDayCellProps {
   isDragOver?: boolean;
   onDragOver?: (date: Date) => void;
   onDragLeave?: () => void;
-  // Selection props
   selectionMode?: boolean;
   selectedPostIds?: string[];
   onToggleSelection?: (postId: string) => void;
 }
 
-const PLATFORM_CONFIG: Record<string, { icon: React.ElementType; color: string; bgColor: string }> = {
+const PLATFORM_CONFIG: Record<
+  string,
+  { icon: React.ElementType; color: string; bgColor: string }
+> = {
   linkedin: {
     icon: Linkedin,
     color: "text-[#0A66C2]",
@@ -109,17 +123,14 @@ export function CalendarDayCell({
     return (platform.type || "").toLowerCase().replace(/[^a-z]/g, "");
   };
 
-  // Check if a post is selected
   const isPostSelected = (postId: string): boolean => {
     return selectedPostIds.includes(postId);
   };
 
-  // Check if a post can be selected (not published/publishing)
   const canSelectPost = (post: Post): boolean => {
     return post.status !== "PUBLISHED" && post.status !== "PUBLISHING";
   };
 
-  // Drag handlers for the cell (drop target)
   const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
@@ -136,17 +147,17 @@ export function CalendarDayCell({
   const handleDrop = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setLocalDragOver(false);
-    
+
     const postId = e.dataTransfer.getData("postId");
     const originalTime = e.dataTransfer.getData("originalTime");
-    
+
     if (postId && onPostDrop) {
       const newDate = new Date(
         date.getFullYear(),
         date.getMonth(),
         date.getDate()
       );
-      
+
       if (originalTime) {
         const [hours, minutes] = originalTime.split(":").map(Number);
         if (!isNaN(hours) && !isNaN(minutes)) {
@@ -157,28 +168,26 @@ export function CalendarDayCell({
       } else {
         newDate.setHours(9, 0, 0, 0);
       }
-      
+
       onPostDrop(postId, newDate);
     }
   };
 
-  // Drag handlers for posts (drag source)
   const handlePostDragStart = (e: DragEvent<HTMLDivElement>, post: Post) => {
-    // Don't allow dragging in selection mode
     if (selectionMode) {
       e.preventDefault();
       return;
     }
-    
+
     e.dataTransfer.setData("postId", post.id);
     if (post.scheduledFor) {
       const time = new Date(post.scheduledFor);
-      const hours = String(time.getHours()).padStart(2, '0');
-      const minutes = String(time.getMinutes()).padStart(2, '0');
+      const hours = String(time.getHours()).padStart(2, "0");
+      const minutes = String(time.getMinutes()).padStart(2, "0");
       e.dataTransfer.setData("originalTime", `${hours}:${minutes}`);
     }
     e.dataTransfer.effectAllowed = "move";
-    
+
     const target = e.target as HTMLElement;
     target.style.opacity = "0.5";
   };
@@ -188,7 +197,6 @@ export function CalendarDayCell({
     target.style.opacity = "1";
   };
 
-  // Handle checkbox click (prevent propagation to post click)
   const handleCheckboxClick = (e: MouseEvent, postId: string) => {
     e.stopPropagation();
     onToggleSelection?.(postId);
@@ -205,11 +213,11 @@ export function CalendarDayCell({
         "min-h-[100px] border-b border-r border-gray-100 dark:border-gray-800 p-1 flex flex-col transition-colors",
         !isCurrentMonth && "bg-gray-50/50 dark:bg-gray-900/50",
         isToday && "bg-blue-50/50 dark:bg-blue-950/30",
-        isDropTarget && "bg-blue-100 dark:bg-blue-900/50 border-blue-400 dark:border-blue-600 border-2 border-dashed",
+        isDropTarget &&
+          "bg-blue-100 dark:bg-blue-900/50 border-blue-400 dark:border-blue-600 border-2 border-dashed",
         selectionMode && "cursor-pointer"
       )}
     >
-      {/* Date Number */}
       <div className="flex items-center justify-between mb-1">
         <span
           className={cn(
@@ -217,8 +225,8 @@ export function CalendarDayCell({
             isToday
               ? "bg-blue-600 text-white"
               : isCurrentMonth
-              ? "text-gray-900 dark:text-white"
-              : "text-gray-400 dark:text-gray-600"
+                ? "text-gray-900 dark:text-white"
+                : "text-gray-400 dark:text-gray-600"
           )}
         >
           {dayNumber}
@@ -231,22 +239,24 @@ export function CalendarDayCell({
         )}
       </div>
 
-      {/* Drop indicator */}
       {isDropTarget && !selectionMode && (
         <div className="text-[10px] text-blue-600 dark:text-blue-400 text-center py-1 font-medium">
           Drop here
         </div>
       )}
 
-      {/* Posts */}
       <div className="flex-1 space-y-1 overflow-hidden">
         {visiblePosts.map((post) => {
           const platformType = getPlatformType(post.platform);
-          const config = PLATFORM_CONFIG[platformType] || PLATFORM_CONFIG.wordpress;
+          const config =
+            PLATFORM_CONFIG[platformType] || PLATFORM_CONFIG.wordpress;
           const Icon = config.icon;
           const statusStyle = STATUS_STYLES[post.status] || STATUS_STYLES.DRAFT;
-          
-          const isDraggable = !selectionMode && post.status !== "PUBLISHED" && post.status !== "PUBLISHING";
+
+          const isDraggable =
+            !selectionMode &&
+            post.status !== "PUBLISHED" &&
+            post.status !== "PUBLISHING";
           const isSelected = isPostSelected(post.id);
           const canSelect = canSelectPost(post);
 
@@ -262,14 +272,15 @@ export function CalendarDayCell({
                 statusStyle,
                 "group cursor-pointer",
                 isDraggable && "cursor-grab active:cursor-grabbing",
-                // Selection styling
-                selectionMode && canSelect && "hover:ring-2 hover:ring-purple-400 hover:ring-offset-1",
-                isSelected && "ring-2 ring-purple-500 ring-offset-1 bg-purple-50 dark:bg-purple-950/50",
+                selectionMode &&
+                  canSelect &&
+                  "hover:ring-2 hover:ring-purple-400 hover:ring-offset-1",
+                isSelected &&
+                  "ring-2 ring-purple-500 ring-offset-1 bg-purple-50 dark:bg-purple-950/50",
                 selectionMode && !canSelect && "opacity-50 cursor-not-allowed"
               )}
             >
               <div className="flex items-center gap-1">
-                {/* Selection checkbox or drag handle */}
                 {selectionMode ? (
                   canSelect && (
                     <button
@@ -289,19 +300,20 @@ export function CalendarDayCell({
                     <GripVertical className="h-3 w-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
                   )
                 )}
-                
+
                 <Icon className={cn("h-3 w-3 flex-shrink-0", config.color)} />
                 <span className="text-[11px] font-medium text-gray-700 dark:text-gray-300 truncate">
                   {post.topic || post.content.substring(0, 30)}
                 </span>
               </div>
 
-              {/* Time */}
               {post.scheduledFor && (
-                <span className={cn(
-                  "text-[10px] text-gray-400 dark:text-gray-500",
-                  selectionMode && canSelect ? "ml-5" : "ml-4"
-                )}>
+                <span
+                  className={cn(
+                    "text-[10px] text-gray-400 dark:text-gray-500",
+                    selectionMode && canSelect ? "ml-5" : "ml-4"
+                  )}
+                >
                   {new Date(post.scheduledFor).toLocaleTimeString([], {
                     hour: "2-digit",
                     minute: "2-digit",
@@ -312,7 +324,6 @@ export function CalendarDayCell({
           );
         })}
 
-        {/* Show More Button */}
         {hasMorePosts && !showAll && (
           <button
             onClick={() => setShowAll(true)}

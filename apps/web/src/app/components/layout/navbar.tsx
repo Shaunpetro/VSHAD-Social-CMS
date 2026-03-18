@@ -1,3 +1,4 @@
+// apps/web/src/app/components/layout/navbar.tsx
 "use client";
 
 import Link from "next/link";
@@ -9,6 +10,7 @@ import {
   Plug,
   Sparkles,
   CalendarDays,
+  BarChart3,
   HelpCircle,
   ChevronDown,
   Terminal,
@@ -23,6 +25,7 @@ const navItems = [
   { label: "Platforms", href: "/platforms", icon: Plug },
   { label: "Generate", href: "/generate", icon: Sparkles },
   { label: "Calendar", href: "/calendar", icon: CalendarDays },
+  { label: "Analytics", href: "/analytics", icon: BarChart3 },
 ];
 
 const helpItems = [
