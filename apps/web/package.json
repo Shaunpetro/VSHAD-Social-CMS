@@ -8,12 +8,14 @@
     "dev:ps": "cd ../.. && powershell -ExecutionPolicy Bypass -File scripts/dev-with-tunnel.ps1",
     "dev:tunnel": "concurrently \"next dev --turbo\" \"ngrok http 3000\"",
     "ngrok": "ngrok http 3000",
-    "build": "next build",
+    "build": "prisma generate --schema=../../prisma/schema.prisma && next build",
+    "postinstall": "prisma generate --schema=../../prisma/schema.prisma",
     "start": "next start",
     "lint": "next lint",
     "seed:metrics": "node ../../scripts/seed-metrics.js"
   },
   "dependencies": {
+    "@eslint/eslintrc": "^3.2.0",
     "@google/generative-ai": "^0.24.1",
     "@lucia-auth/adapter-prisma": "^4.0.1",
     "@prisma/client": "6.1.0",
@@ -36,7 +38,6 @@
     "@types/node": "^22.10.5",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
-    "@types/recharts": "^2.0.1",
     "autoprefixer": "^10.4.0",
     "concurrently": "^9.2.1",
     "eslint": "^9.0.0",
