@@ -28,6 +28,10 @@ interface Post {
   topic: string | null;
   tone: string | null;
   hashtags: string[];
+  likes?: number;
+  comments?: number;
+  shares?: number;
+  impressions?: number;
   platform: {
     id: string;
     type: string;
@@ -54,10 +58,20 @@ interface Platform {
 
 type ViewMode = "month" | "week";
 
-const DAYS_OF_WEEK = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const DAYS_OF_WEEK = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
 const MONTHS = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
 ];
 
 /**
@@ -65,17 +79,20 @@ const MONTHS = [
  */
 function toLocalISOString(date: Date): string {
   const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  const hours = String(date.getHours()).padStart(2, '0');
-  const minutes = String(date.getMinutes()).padStart(2, '0');
-  const seconds = String(date.getSeconds()).padStart(2, '0');
-  
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  const seconds = String(date.getSeconds()).padStart(2, "0");
+
   const timezoneOffset = -date.getTimezoneOffset();
-  const offsetHours = String(Math.floor(Math.abs(timezoneOffset) / 60)).padStart(2, '0');
-  const offsetMinutes = String(Math.abs(timezoneOffset) % 60).padStart(2, '0');
-  const offsetSign = timezoneOffset >= 0 ? '+' : '-';
-  
+  const offsetHours = String(Math.floor(Math.abs(timezoneOffset) / 60)).padStart(
+    2,
+    "0"
+  );
+  const offsetMinutes = String(Math.abs(timezoneOffset) % 60).padStart(2, "0");
+  const offsetSign = timezoneOffset >= 0 ? "+" : "-";
+
   return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}${offsetSign}${offsetHours}:${offsetMinutes}`;
 }
 
@@ -84,8 +101,8 @@ function toLocalISOString(date: Date): string {
  */
 function getLocalDateString(date: Date): string {
   const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
 }
 
@@ -128,7 +145,6 @@ function formatWeekRange(start: Date, end: Date): string {
 }
 
 export default function CalendarPage() {
-  // Use shared company context
   const { selectedCompanyId } = useCompany();
 
   // Core state
@@ -180,13 +196,18 @@ export default function CalendarPage() {
     try {
       const year = currentDate.getFullYear();
       const month = currentDate.getMonth();
-      
-      // Fetch a broader range to cover week view edge cases
-      const startDate = new Date(year, month - 1, 1).toISOString();
-      const endDate = new Date(year, month + 2, 0).toISOString();
+
+      // Use timezone-safe ISO strings for query range boundaries
+      const start = new Date(year, month - 1, 1, 0, 0, 0, 0);
+      const end = new Date(year, month + 2, 0, 23, 59, 59, 999);
+
+      const startDate = toLocalISOString(start);
+      const endDate = toLocalISOString(end);
 
       const res = await fetch(
-        `/api/posts?companyId=${selectedCompanyId}&startDate=${startDate}&endDate=${endDate}`
+        `/api/posts?companyId=${selectedCompanyId}&startDate=${encodeURIComponent(
+          startDate
+        )}&endDate=${encodeURIComponent(endDate)}`
       );
 
       if (res.ok) {
@@ -207,10 +228,10 @@ export default function CalendarPage() {
   // Filter posts
   const filteredPosts = useMemo(() => {
     return posts.filter((post) => {
-      if (selectedPlatforms.length > 0 && post.platform) {
-        if (!selectedPlatforms.includes(post.platform.id)) {
-          return false;
-        }
+      if (selectedPlatforms.length > 0) {
+        // When filtering by platform, exclude posts with null platform
+        if (!post.platform) return false;
+        if (!selectedPlatforms.includes(post.platform.id)) return false;
       }
 
       if (selectedStatuses.length > 0) {
@@ -227,7 +248,7 @@ export default function CalendarPage() {
   const weekData = useMemo(() => {
     const weekStart = getWeekStart(currentDate);
     const weekEnd = getWeekEnd(currentDate);
-    
+
     const days: Array<{
       date: Date;
       isToday: boolean;
@@ -240,7 +261,7 @@ export default function CalendarPage() {
     for (let i = 0; i < 7; i++) {
       const date = new Date(weekStart);
       date.setDate(weekStart.getDate() + i);
-      
+
       const dateStr = getLocalDateString(date);
       const dayPosts = filteredPosts.filter((post) => {
         if (!post.scheduledFor) return false;
@@ -355,6 +376,12 @@ export default function CalendarPage() {
   };
 
   // Post handlers
+  const togglePostSelection = (postId: string) => {
+    setSelectedPostIds((prev) =>
+      prev.includes(postId) ? prev.filter((id) => id !== postId) : [...prev, postId]
+    );
+  };
+
   const handlePostClick = (post: Post) => {
     if (selectionMode) {
       togglePostSelection(post.id);
@@ -422,14 +449,6 @@ export default function CalendarPage() {
   };
 
   // Selection handlers
-  const togglePostSelection = (postId: string) => {
-    setSelectedPostIds((prev) =>
-      prev.includes(postId)
-        ? prev.filter((id) => id !== postId)
-        : [...prev, postId]
-    );
-  };
-
   const toggleSelectionMode = () => {
     if (selectionMode) {
       setSelectedPostIds([]);
@@ -525,22 +544,23 @@ export default function CalendarPage() {
 
   // Stats
   const monthStats = useMemo(() => {
-    const relevantPosts = viewMode === "month"
-      ? filteredPosts.filter((post) => {
-          if (!post.scheduledFor) return false;
-          const postDate = new Date(post.scheduledFor);
-          return (
-            postDate.getMonth() === currentDate.getMonth() &&
-            postDate.getFullYear() === currentDate.getFullYear()
-          );
-        })
-      : filteredPosts.filter((post) => {
-          if (!post.scheduledFor) return false;
-          const postDate = new Date(post.scheduledFor);
-          const weekStart = getWeekStart(currentDate);
-          const weekEnd = getWeekEnd(currentDate);
-          return postDate >= weekStart && postDate <= weekEnd;
-        });
+    const relevantPosts =
+      viewMode === "month"
+        ? filteredPosts.filter((post) => {
+            if (!post.scheduledFor) return false;
+            const postDate = new Date(post.scheduledFor);
+            return (
+              postDate.getMonth() === currentDate.getMonth() &&
+              postDate.getFullYear() === currentDate.getFullYear()
+            );
+          })
+        : filteredPosts.filter((post) => {
+            if (!post.scheduledFor) return false;
+            const postDate = new Date(post.scheduledFor);
+            const weekStart = getWeekStart(currentDate);
+            const weekEnd = getWeekEnd(currentDate);
+            return postDate >= weekStart && postDate <= weekEnd;
+          });
 
     return {
       total: relevantPosts.length,
@@ -551,18 +571,20 @@ export default function CalendarPage() {
   }, [filteredPosts, currentDate, viewMode]);
 
   // Navigation label
-  const navigationLabel = viewMode === "month"
-    ? `${calendarData.monthName} ${calendarData.year}`
-    : formatWeekRange(weekData.weekStart, weekData.weekEnd);
+  const navigationLabel =
+    viewMode === "month"
+      ? `${calendarData.monthName} ${calendarData.year}`
+      : formatWeekRange(weekData.weekStart, weekData.weekEnd);
 
   return (
-    <div className="h-full flex flex-col p-6">
+    <div className="h-full flex flex-col p-4 md:p-6 overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-4">
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-            <CalendarIcon className="h-6 w-6 text-blue-500" />
-            Content Calendar
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-4 flex-shrink-0">
+        {/* Left: Title and View Toggle */}
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className="text-xl md:text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+            <CalendarIcon className="h-5 w-5 md:h-6 md:w-6 text-blue-500" />
+            <span className="whitespace-nowrap">Content Calendar</span>
           </h1>
 
           {/* View Mode Toggle */}
@@ -570,44 +592,44 @@ export default function CalendarPage() {
             <button
               onClick={() => setViewMode("month")}
               className={cn(
-                "flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md transition-colors",
+                "flex items-center gap-1.5 px-2.5 py-1.5 text-sm font-medium rounded-md transition-colors",
                 viewMode === "month"
                   ? "bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm"
                   : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
               )}
             >
               <LayoutGrid className="h-4 w-4" />
-              Month
+              <span className="hidden sm:inline">Month</span>
             </button>
             <button
               onClick={() => setViewMode("week")}
               className={cn(
-                "flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md transition-colors",
+                "flex items-center gap-1.5 px-2.5 py-1.5 text-sm font-medium rounded-md transition-colors",
                 viewMode === "week"
                   ? "bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm"
                   : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
               )}
             >
               <CalendarDays className="h-4 w-4" />
-              Week
+              <span className="hidden sm:inline">Week</span>
             </button>
           </div>
 
           {/* Stats */}
-          <div className="hidden md:flex items-center gap-3 ml-4">
-            <div className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-50 dark:bg-blue-950 rounded-lg">
+          <div className="hidden xl:flex items-center gap-2">
+            <div className="flex items-center gap-1.5 px-2 py-1 bg-blue-50 dark:bg-blue-950 rounded-lg">
               <div className="w-2 h-2 rounded-full bg-blue-500" />
               <span className="text-xs font-medium text-blue-700 dark:text-blue-300">
                 {monthStats.scheduled} scheduled
               </span>
             </div>
-            <div className="flex items-center gap-1.5 px-2.5 py-1 bg-green-50 dark:bg-green-950 rounded-lg">
+            <div className="flex items-center gap-1.5 px-2 py-1 bg-green-50 dark:bg-green-950 rounded-lg">
               <div className="w-2 h-2 rounded-full bg-green-500" />
               <span className="text-xs font-medium text-green-700 dark:text-green-300">
                 {monthStats.published} published
               </span>
             </div>
-            <div className="flex items-center gap-1.5 px-2.5 py-1 bg-gray-100 dark:bg-gray-800 rounded-lg">
+            <div className="flex items-center gap-1.5 px-2 py-1 bg-gray-100 dark:bg-gray-800 rounded-lg">
               <div className="w-2 h-2 rounded-full bg-gray-400" />
               <span className="text-xs font-medium text-gray-600 dark:text-gray-400">
                 {monthStats.draft} drafts
@@ -619,18 +641,18 @@ export default function CalendarPage() {
           {isRescheduling && (
             <div className="flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400">
               <Loader2 className="h-4 w-4 animate-spin" />
-              <span>Rescheduling...</span>
+              <span className="hidden sm:inline">Rescheduling...</span>
             </div>
           )}
         </div>
 
-        {/* Navigation */}
-        <div className="flex items-center gap-2">
+        {/* Right: Navigation Controls */}
+        <div className="flex flex-wrap items-center gap-2">
           {/* Selection Mode Toggle */}
           <button
             onClick={toggleSelectionMode}
             className={cn(
-              "px-3 py-1.5 text-sm font-medium rounded-lg transition-colors",
+              "px-2.5 py-1.5 text-sm font-medium rounded-lg transition-colors whitespace-nowrap",
               selectionMode
                 ? "bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300"
                 : "text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
@@ -642,13 +664,13 @@ export default function CalendarPage() {
           {selectionMode && (
             <button
               onClick={selectAllVisible}
-              className="px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800 rounded-lg transition-colors"
+              className="px-2.5 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800 rounded-lg transition-colors whitespace-nowrap"
             >
               Select All
             </button>
           )}
 
-          <div className="w-px h-6 bg-gray-200 dark:bg-gray-700 mx-1" />
+          <div className="w-px h-6 bg-gray-200 dark:bg-gray-700" />
 
           <button
             onClick={fetchPosts}
@@ -661,26 +683,27 @@ export default function CalendarPage() {
 
           <button
             onClick={goToToday}
-            className="px-3 py-1.5 text-sm font-medium text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-950 rounded-lg transition-colors"
+            className="px-2.5 py-1.5 text-sm font-medium text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-950 rounded-lg transition-colors whitespace-nowrap"
           >
             Today
           </button>
 
-          <div className="flex items-center gap-1 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-lg p-1">
+          {/* Date Navigation */}
+          <div className="flex items-center bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-lg">
             <button
               onClick={viewMode === "month" ? goToPrevMonth : goToPrevWeek}
-              className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md transition-colors"
+              className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-l-md transition-colors"
             >
               <ChevronLeft className="h-4 w-4 text-gray-600 dark:text-gray-400" />
             </button>
 
-            <span className="px-3 py-1 text-sm font-semibold text-gray-900 dark:text-white min-w-[180px] text-center">
+            <span className="px-3 py-1.5 text-sm font-semibold text-gray-900 dark:text-white whitespace-nowrap min-w-[140px] text-center">
               {navigationLabel}
             </span>
 
             <button
               onClick={viewMode === "month" ? goToNextMonth : goToNextWeek}
-              className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md transition-colors"
+              className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-r-md transition-colors"
             >
               <ChevronRight className="h-4 w-4 text-gray-600 dark:text-gray-400" />
             </button>
@@ -689,7 +712,7 @@ export default function CalendarPage() {
       </div>
 
       {/* Filters */}
-      <div className="mb-4">
+      <div className="mb-3 flex-shrink-0">
         <CalendarFilters
           platforms={platforms}
           selectedPlatforms={selectedPlatforms}
@@ -705,23 +728,21 @@ export default function CalendarPage() {
 
       {/* Selection Mode Hint */}
       {selectionMode ? (
-        <div className="mb-2 text-xs text-purple-600 dark:text-purple-400 flex items-center gap-2">
+        <div className="mb-2 text-xs text-purple-600 dark:text-purple-400 flex items-center gap-2 flex-shrink-0">
           <span className="inline-block w-2 h-2 bg-purple-500 rounded-full animate-pulse" />
-          Selection mode: Click posts to select them for bulk actions
+          <span>Selection mode: Click posts to select them for bulk actions</span>
           {selectedPostIds.length > 0 && (
-            <span className="ml-2 font-semibold">
-              ({selectedPostIds.length} selected)
-            </span>
+            <span className="font-semibold">({selectedPostIds.length} selected)</span>
           )}
         </div>
       ) : (
-        <div className="mb-2 text-xs text-gray-500 dark:text-gray-400">
-          💡 Tip: Drag and drop posts to reschedule, or use &quot;Select Posts&quot; for bulk actions
+        <div className="mb-2 text-xs text-gray-500 dark:text-gray-400 flex-shrink-0">
+          Tip: Drag and drop posts to reschedule, or use &quot;Select Posts&quot; for bulk actions
         </div>
       )}
 
       {/* Calendar Grid */}
-      <div className="flex-1 bg-white dark:bg-gray-950 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden flex flex-col">
+      <div className="flex-1 min-h-0 bg-white dark:bg-gray-950 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden flex flex-col">
         {loading ? (
           <div className="flex-1 flex items-center justify-center">
             <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
@@ -729,40 +750,50 @@ export default function CalendarPage() {
         ) : viewMode === "month" ? (
           <>
             {/* Days of Week Header */}
-            <div className="grid grid-cols-7 border-b border-gray-200 dark:border-gray-800">
+            <div className="grid grid-cols-7 border-b border-gray-200 dark:border-gray-800 flex-shrink-0">
               {DAYS_OF_WEEK.map((day) => (
                 <div
                   key={day}
-                  className="py-3 text-center text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider"
+                  className="py-2 text-center text-xs font-semibold text-gray-500 dark:text-gray-400 tracking-wider border-r border-gray-100 dark:border-gray-800 last:border-r-0"
                 >
                   {day}
                 </div>
               ))}
             </div>
 
-            {/* Calendar Days (Month View) */}
-            <div className="flex-1 grid grid-cols-7 grid-rows-6">
-              {calendarData.days.map((day, index) => (
-                <CalendarDayCell
-                  key={index}
-                  date={day.date}
-                  isCurrentMonth={day.isCurrentMonth}
-                  isToday={day.isToday}
-                  posts={day.posts}
-                  onPostClick={handlePostClick}
-                  onPostDrop={handlePostDrop}
-                  isDragOver={dragOverDate?.toDateString() === day.date.toDateString()}
-                  onDragOver={setDragOverDate}
-                  onDragLeave={() => setDragOverDate(null)}
-                  selectionMode={selectionMode}
-                  selectedPostIds={selectedPostIds}
-                  onToggleSelection={togglePostSelection}
-                />
-              ))}
+            {/* Month body scroll container (fixes bottom weeks disappearing) */}
+            <div className="flex-1 min-h-0 overflow-y-auto">
+              <div
+                className="grid grid-cols-7"
+                style={{
+                  gridTemplateRows: "repeat(6, minmax(8.5rem, 1fr))",
+                  height: "auto",
+                }}
+              >
+                {calendarData.days.map((day) => {
+                  const key = getLocalDateString(day.date);
+                  return (
+                    <CalendarDayCell
+                      key={key}
+                      date={day.date}
+                      isCurrentMonth={day.isCurrentMonth}
+                      isToday={day.isToday}
+                      posts={day.posts}
+                      onPostClick={handlePostClick}
+                      onPostDrop={handlePostDrop}
+                      isDragOver={dragOverDate?.toDateString() === day.date.toDateString()}
+                      onDragOver={setDragOverDate}
+                      onDragLeave={() => setDragOverDate(null)}
+                      selectionMode={selectionMode}
+                      selectedPostIds={selectedPostIds}
+                      onToggleSelection={togglePostSelection}
+                    />
+                  );
+                })}
+              </div>
             </div>
           </>
         ) : (
-          /* Week View */
           <CalendarWeekView
             days={weekData.days}
             onPostClick={handlePostClick}
@@ -785,7 +816,7 @@ export default function CalendarPage() {
         onUpdate={handlePostUpdate}
       />
 
-      {/* Bulk Actions - Only show when posts are selected */}
+      {/* Bulk Actions */}
       {selectedPostIds.length > 0 && (
         <BulkActions
           selectedCount={selectedPostIds.length}

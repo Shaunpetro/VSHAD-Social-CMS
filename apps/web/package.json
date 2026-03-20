@@ -10,7 +10,8 @@
     "ngrok": "ngrok http 3000",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "seed:metrics": "node ../../scripts/seed-metrics.js"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

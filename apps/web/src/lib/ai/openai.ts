@@ -1,7 +1,12 @@
 // apps/web/src/lib/ai/openai.ts
-// Using Groq (free Llama 3.1 70B)
+// Using Groq (free Llama 3.3 70B) with Performance Analytics Integration
 
 import Groq from "groq-sdk";
+import {
+  getPerformanceInsights,
+  formatInsightsForPrompt,
+  type PerformanceInsights,
+} from "./analytics-insights";
 
 // Initialize Groq
 const groq = new Groq({
@@ -13,31 +18,36 @@ const platformConfigs = {
   linkedin: {
     maxLength: 3000,
     style: "professional and insightful",
-    format: "Use line breaks for readability. Can include bullet points. End with a call-to-action or thought-provoking question.",
+    format:
+      "Use line breaks for readability. Can include bullet points. End with a call-to-action or thought-provoking question.",
     hashtagCount: "3-5 relevant industry hashtags",
   },
   twitter: {
     maxLength: 280,
     style: "concise, punchy, and engaging",
-    format: "Single impactful message. Can use thread format indication if needed. Keep it shareable.",
+    format:
+      "Single impactful message. Can use thread format indication if needed. Keep it shareable.",
     hashtagCount: "1-2 hashtags maximum",
   },
   facebook: {
     maxLength: 2000,
     style: "conversational and community-focused",
-    format: "Friendly tone, can be longer form. Encourage comments and shares. Use emojis sparingly if appropriate.",
+    format:
+      "Friendly tone, can be longer form. Encourage comments and shares. Use emojis sparingly if appropriate.",
     hashtagCount: "2-3 hashtags",
   },
   instagram: {
     maxLength: 2200,
     style: "visual-first, lifestyle-oriented, authentic",
-    format: "Caption that complements an image. Use line breaks, emojis encouraged. Hashtags at the end.",
+    format:
+      "Caption that complements an image. Use line breaks, emojis encouraged. Hashtags at the end.",
     hashtagCount: "5-10 relevant hashtags",
   },
   wordpress: {
     maxLength: 5000,
     style: "informative, SEO-friendly, authoritative",
-    format: "Blog post structure with introduction, body paragraphs, and conclusion. Use headers (##) for sections. Include a meta description.",
+    format:
+      "Blog post structure with introduction, body paragraphs, and conclusion. Use headers (##) for sections. Include a meta description.",
     hashtagCount: "3-5 tags/categories",
   },
 };
@@ -51,14 +61,17 @@ const toneDescriptions = {
 };
 
 export interface GenerateContentParams {
+  companyId?: string;
   companyName: string;
   companyDescription?: string;
   companyIndustry?: string;
   platform: "linkedin" | "twitter" | "facebook" | "instagram" | "wordpress";
+  platformId?: string;
   topic?: string;
   tone?: "professional" | "casual" | "friendly" | "authoritative";
   includeHashtags?: boolean;
   includeEmojis?: boolean;
+  useAnalytics?: boolean; // NEW: Enable performance-based learning
 }
 
 export interface GeneratedContent {
@@ -66,31 +79,59 @@ export interface GeneratedContent {
   hashtags: string[];
   characterCount: number;
   platform: string;
+  analyticsUsed?: boolean;
+  insights?: PerformanceInsights;
 }
 
 export async function generateSocialContent(
   params: GenerateContentParams
 ): Promise<GeneratedContent> {
   const {
+    companyId,
     companyName,
     companyDescription,
     companyIndustry,
     platform,
+    platformId,
     topic,
     tone = "professional",
     includeHashtags = true,
     includeEmojis = false,
+    useAnalytics = true, // Default to using analytics
   } = params;
 
   const config = platformConfigs[platform];
   const toneDesc = toneDescriptions[tone];
 
-  const prompt = `You are a social media content expert. Generate a ${platform.toUpperCase()} post for the following company:
+  // Fetch performance insights if enabled and companyId provided
+  let insights: PerformanceInsights | null = null;
+  let insightsPrompt = "";
+
+  if (useAnalytics && companyId) {
+    try {
+      insights = await getPerformanceInsights({
+        companyId,
+        platformId,
+        platformType: platform.toUpperCase(),
+        days: 90,
+        minImpressions: 10,
+      });
+
+      if (insights.hasData) {
+        insightsPrompt = formatInsightsForPrompt(insights);
+      }
+    } catch (error) {
+      console.warn("Failed to fetch performance insights:", error);
+      // Continue without insights
+    }
+  }
+
+  const prompt = `You are a social media content expert with access to performance analytics. Generate a ${platform.toUpperCase()} post for the following company:
 
 **Company Name:** ${companyName}
 **Industry:** ${companyIndustry || "Not specified"}
 **Company Description:** ${companyDescription || "Not provided"}
-
+${insightsPrompt}
 **Content Requirements:**
 - Platform: ${platform.toUpperCase()}
 - Maximum Length: ${config.maxLength} characters
@@ -107,6 +148,7 @@ ${includeHashtags ? `- Include ${config.hashtagCount} at the end` : "- Do not in
 3. Focus on providing value to the reader
 4. Match the brand voice based on the company description
 5. Keep within the character limit for ${platform}
+${insights?.hasData ? "6. LEARN FROM THE PERFORMANCE INSIGHTS ABOVE - incorporate successful patterns while keeping content fresh and original" : ""}
 
 Generate the post now:`;
 
@@ -140,6 +182,8 @@ Generate the post now:`;
       hashtags: hashtags.map((tag) => tag.replace("#", "")),
       characterCount: content.length,
       platform,
+      analyticsUsed: insights?.hasData ?? false,
+      insights: insights ?? undefined,
     };
   } catch (error) {
     console.error("Groq API Error:", error);
@@ -152,18 +196,44 @@ Generate the post now:`;
 export async function regenerateContent(
   originalContent: string,
   feedback: string,
-  platform: string
+  platform: string,
+  companyId?: string,
+  platformId?: string
 ): Promise<GeneratedContent> {
-  const config = platformConfigs[platform as keyof typeof platformConfigs] || platformConfigs.linkedin;
+  const config =
+    platformConfigs[platform as keyof typeof platformConfigs] ||
+    platformConfigs.linkedin;
 
-  const prompt = `You are a social media content expert. Improve the following ${platform.toUpperCase()} post based on the feedback provided.
+  // Fetch performance insights if companyId provided
+  let insights: PerformanceInsights | null = null;
+  let insightsPrompt = "";
+
+  if (companyId) {
+    try {
+      insights = await getPerformanceInsights({
+        companyId,
+        platformId,
+        platformType: platform.toUpperCase(),
+        days: 90,
+        minImpressions: 10,
+      });
+
+      if (insights.hasData) {
+        insightsPrompt = formatInsightsForPrompt(insights);
+      }
+    } catch (error) {
+      console.warn("Failed to fetch performance insights:", error);
+    }
+  }
+
+  const prompt = `You are a social media content expert with access to performance analytics. Improve the following ${platform.toUpperCase()} post based on the feedback provided.
 
 **Original Post:**
 ${originalContent}
 
 **Feedback/Instructions:**
 ${feedback}
-
+${insightsPrompt}
 **Platform Requirements:**
 - Platform: ${platform.toUpperCase()}
 - Maximum Length: ${config.maxLength} characters
@@ -174,6 +244,7 @@ ${feedback}
 2. Apply the feedback while maintaining the core message
 3. Keep the same general tone unless feedback says otherwise
 4. Stay within character limits
+${insights?.hasData ? "5. APPLY INSIGHTS from high-performing posts to maximize engagement" : ""}
 
 Generate the improved post now:`;
 
@@ -207,6 +278,8 @@ Generate the improved post now:`;
       hashtags: hashtags.map((tag) => tag.replace("#", "")),
       characterCount: content.length,
       platform,
+      analyticsUsed: insights?.hasData ?? false,
+      insights: insights ?? undefined,
     };
   } catch (error) {
     console.error("Groq API Error:", error);

@@ -12,6 +12,7 @@ import {
   Archive,
   Loader2,
   AlertTriangle,
+  CheckCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -36,6 +37,7 @@ export function BulkActions({
 }: BulkActionsProps) {
   const [showRescheduleModal, setShowRescheduleModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showPublishConfirm, setShowPublishConfirm] = useState(false);
   const [rescheduleDate, setRescheduleDate] = useState("");
   const [rescheduleTime, setRescheduleTime] = useState("09:00");
 
@@ -53,6 +55,11 @@ export function BulkActions({
   const handleDelete = async () => {
     await onBulkDelete();
     setShowDeleteConfirm(false);
+  };
+
+  const handlePublish = async () => {
+    await onBulkStatusChange("PUBLISHED");
+    setShowPublishConfirm(false);
   };
 
   return (
@@ -77,6 +84,16 @@ export function BulkActions({
 
           {/* Action Buttons */}
           <div className="flex items-center gap-2">
+            {/* Mark Published */}
+            <button
+              onClick={() => setShowPublishConfirm(true)}
+              disabled={isProcessing}
+              className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors disabled:opacity-50"
+            >
+              <CheckCircle className="h-4 w-4" />
+              Publish
+            </button>
+
             {/* Reschedule */}
             <button
               onClick={() => setShowRescheduleModal(true)}
@@ -186,6 +203,70 @@ export function BulkActions({
                   <Calendar className="h-4 w-4" />
                 )}
                 Reschedule
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Publish Confirmation Modal */}
+      {showPublishConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div
+            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+            onClick={() => setShowPublishConfirm(false)}
+          />
+          <div className="relative bg-white dark:bg-gray-900 rounded-xl shadow-2xl p-6 w-full max-w-md mx-4">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2 bg-green-100 dark:bg-green-900 rounded-full">
+                <CheckCircle className="h-6 w-6 text-green-600 dark:text-green-400" />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                Mark {selectedCount} Posts as Published?
+              </h3>
+            </div>
+
+            <div className="space-y-3 mb-6">
+              <p className="text-gray-600 dark:text-gray-400">
+                This will mark the selected posts as published and:
+              </p>
+              <ul className="text-sm text-gray-500 dark:text-gray-400 space-y-1 ml-4">
+                <li className="flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 bg-green-500 rounded-full" />
+                  Set status to PUBLISHED
+                </li>
+                <li className="flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 bg-green-500 rounded-full" />
+                  Record the publish timestamp
+                </li>
+                <li className="flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 bg-green-500 rounded-full" />
+                  Auto-generate realistic engagement metrics
+                </li>
+              </ul>
+              <p className="text-xs text-gray-400 dark:text-gray-500 italic">
+                Metrics are simulated for analytics testing. Connect real platform APIs for actual data.
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setShowPublishConfirm(false)}
+                className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handlePublish}
+                disabled={isProcessing}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
+              >
+                {isProcessing ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <CheckCircle className="h-4 w-4" />
+                )}
+                Mark Published
               </button>
             </div>
           </div>

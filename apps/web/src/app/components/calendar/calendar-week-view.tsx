@@ -58,8 +58,8 @@ const STATUS_COLORS: Record<string, string> = {
   PUBLISHING: "bg-yellow-100 dark:bg-yellow-900/50 border-yellow-300 dark:border-yellow-700",
 };
 
-const HOURS = Array.from({ length: 24 }, (_, i) => i);
-const DISPLAY_HOURS = [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21];
+// Business hours only for cleaner view
+const DISPLAY_HOURS = [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
 const DAYS_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 function formatHour(hour: number): string {
@@ -148,149 +148,140 @@ export function CalendarWeekView({
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* Header with days */}
-      <div className="flex border-b border-gray-200 dark:border-gray-800 flex-shrink-0">
-        {/* Time column header */}
-        <div className="w-20 flex-shrink-0 py-3 px-2 text-center text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">
-          Time
-        </div>
-
-        {/* Day columns headers */}
-        {days.map((day, index) => (
-          <div
-            key={index}
-            className={cn(
-              "flex-1 py-3 px-2 text-center border-l border-gray-200 dark:border-gray-800",
-              day.isToday && "bg-blue-50/50 dark:bg-blue-950/30"
-            )}
-          >
-            <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">
-              {DAYS_SHORT[day.date.getDay()]}
+      {/* Scrollable container that includes BOTH header and body */}
+      <div className="flex-1 overflow-auto">
+        <div className="min-w-full">
+          {/* Header with days - sticky */}
+          <div className="grid grid-cols-[60px_repeat(7,1fr)] sticky top-0 z-10 bg-white dark:bg-gray-950 border-b border-gray-200 dark:border-gray-800">
+            {/* Time column header */}
+            <div className="py-2 px-1 text-center text-[10px] font-semibold text-gray-500 dark:text-gray-400 uppercase border-r border-gray-200 dark:border-gray-800">
+              Time
             </div>
-            <div
-              className={cn(
-                "text-lg font-bold mt-1",
-                day.isToday
-                  ? "text-blue-600 dark:text-blue-400"
-                  : "text-gray-900 dark:text-white"
-              )}
-            >
-              {day.date.getDate()}
-            </div>
-          </div>
-        ))}
-      </div>
 
-      {/* Scrollable time grid */}
-      <div className="flex-1 overflow-y-auto">
-        <div className="flex min-h-full">
-          {/* Time labels column */}
-          <div className="w-20 flex-shrink-0">
-            {DISPLAY_HOURS.map((hour) => (
+            {/* Day columns headers */}
+            {days.map((day, index) => (
               <div
-                key={hour}
-                className="h-16 border-b border-gray-100 dark:border-gray-800 flex items-start justify-end pr-2 pt-1"
+                key={index}
+                className={cn(
+                  "py-2 px-1 text-center border-r border-gray-200 dark:border-gray-800 last:border-r-0",
+                  day.isToday && "bg-blue-50/50 dark:bg-blue-950/30"
+                )}
               >
-                <span className="text-xs text-gray-400 dark:text-gray-500">
-                  {formatHour(hour)}
-                </span>
+                <div className="text-[10px] font-semibold text-gray-500 dark:text-gray-400 uppercase">
+                  {DAYS_SHORT[day.date.getDay()]}
+                </div>
+                <div
+                  className={cn(
+                    "text-sm font-bold",
+                    day.isToday
+                      ? "text-blue-600 dark:text-blue-400"
+                      : "text-gray-900 dark:text-white"
+                  )}
+                >
+                  {day.date.getDate()}
+                </div>
               </div>
             ))}
           </div>
 
-          {/* Day columns */}
-          {days.map((day, dayIndex) => (
-            <div
-              key={dayIndex}
-              className={cn(
-                "flex-1 border-l border-gray-200 dark:border-gray-800",
-                day.isToday && "bg-blue-50/30 dark:bg-blue-950/20"
-              )}
-            >
-              {DISPLAY_HOURS.map((hour) => {
-                const hourPosts = getPostsForHour(day.posts, hour);
-                const isDragOver =
-                  dragOverSlot?.dayIndex === dayIndex && dragOverSlot?.hour === hour;
+          {/* Time grid body */}
+          <div className="grid grid-cols-[60px_repeat(7,1fr)]">
+            {DISPLAY_HOURS.map((hour) => (
+              <div key={hour} className="contents">
+                {/* Time label */}
+                <div className="h-12 border-b border-r border-gray-100 dark:border-gray-800 flex items-start justify-end pr-1 pt-0.5">
+                  <span className="text-[10px] text-gray-400 dark:text-gray-500">
+                    {formatHour(hour)}
+                  </span>
+                </div>
 
-                return (
-                  <div
-                    key={hour}
-                    onDragOver={(e) => handleDragOver(e, dayIndex, hour)}
-                    onDragLeave={handleDragLeave}
-                    onDrop={(e) => handleDrop(e, dayIndex, hour)}
-                    className={cn(
-                      "h-16 border-b border-gray-100 dark:border-gray-800 p-1 transition-colors",
-                      isDragOver && "bg-blue-100 dark:bg-blue-900/50 border-blue-400 border-dashed border-2"
-                    )}
-                  >
-                    {/* Posts in this hour slot */}
-                    <div className="space-y-1 h-full overflow-hidden">
-                      {hourPosts.slice(0, 2).map((post) => {
-                        const platformType = getPlatformType(post.platform);
-                        const config = PLATFORM_CONFIG[platformType] || PLATFORM_CONFIG.wordpress;
-                        const Icon = config.icon;
-                        const statusColor = STATUS_COLORS[post.status] || STATUS_COLORS.DRAFT;
-                        const isDraggable = !selectionMode && canSelectPost(post);
-                        const isSelected = isPostSelected(post.id);
-                        const canSelect = canSelectPost(post);
+                {/* Day cells for this hour */}
+                {days.map((day, dayIndex) => {
+                  const hourPosts = getPostsForHour(day.posts, hour);
+                  const isDragOver =
+                    dragOverSlot?.dayIndex === dayIndex && dragOverSlot?.hour === hour;
 
-                        return (
-                          <div
-                            key={post.id}
-                            draggable={isDraggable}
-                            onDragStart={(e) => handlePostDragStart(e, post)}
-                            onDragEnd={handlePostDragEnd}
-                            onClick={() => onPostClick(post)}
-                            className={cn(
-                              "px-2 py-1 rounded border text-xs cursor-pointer transition-all hover:shadow-sm truncate",
-                              statusColor,
-                              isDraggable && "cursor-grab active:cursor-grabbing",
-                              selectionMode && canSelect && "hover:ring-2 hover:ring-purple-400",
-                              isSelected && "ring-2 ring-purple-500 bg-purple-50 dark:bg-purple-950/50",
-                              selectionMode && !canSelect && "opacity-50 cursor-not-allowed"
-                            )}
-                          >
-                            <div className="flex items-center gap-1">
-                              {selectionMode ? (
-                                canSelect && (
-                                  <button
-                                    onClick={(e) => handleCheckboxClick(e, post.id)}
-                                    className={cn(
-                                      "w-3.5 h-3.5 rounded border flex items-center justify-center flex-shrink-0",
-                                      isSelected
-                                        ? "bg-purple-500 border-purple-500 text-white"
-                                        : "border-gray-400 hover:border-purple-400"
-                                    )}
-                                  >
-                                    {isSelected && <Check className="h-2.5 w-2.5" />}
-                                  </button>
-                                )
-                              ) : (
-                                isDraggable && (
-                                  <GripVertical className="h-3 w-3 text-gray-400 flex-shrink-0" />
-                                )
-                              )}
-                              <Icon className={cn("h-3 w-3 flex-shrink-0", config.color)} />
-                              <span className="truncate text-gray-700 dark:text-gray-300 font-medium">
-                                {post.topic || post.content.substring(0, 20)}
-                              </span>
-                            </div>
-                          </div>
-                        );
-                      })}
-
-                      {/* Show more indicator */}
-                      {hourPosts.length > 2 && (
-                        <div className="text-[10px] text-gray-500 dark:text-gray-400 px-1">
-                          +{hourPosts.length - 2} more
-                        </div>
+                  return (
+                    <div
+                      key={dayIndex}
+                      onDragOver={(e) => handleDragOver(e, dayIndex, hour)}
+                      onDragLeave={handleDragLeave}
+                      onDrop={(e) => handleDrop(e, dayIndex, hour)}
+                      className={cn(
+                        "h-12 border-b border-r border-gray-100 dark:border-gray-800 last:border-r-0 p-0.5 transition-colors overflow-hidden",
+                        day.isToday && "bg-blue-50/30 dark:bg-blue-950/20",
+                        isDragOver && "bg-blue-100 dark:bg-blue-900/50 border-blue-400 border-dashed border-2"
                       )}
+                    >
+                      {/* Posts in this hour slot */}
+                      <div className="space-y-0.5 h-full overflow-hidden">
+                        {hourPosts.slice(0, 2).map((post) => {
+                          const platformType = getPlatformType(post.platform);
+                          const config = PLATFORM_CONFIG[platformType] || PLATFORM_CONFIG.wordpress;
+                          const Icon = config.icon;
+                          const statusColor = STATUS_COLORS[post.status] || STATUS_COLORS.DRAFT;
+                          const isDraggable = !selectionMode && canSelectPost(post);
+                          const isSelected = isPostSelected(post.id);
+                          const canSelect = canSelectPost(post);
+
+                          return (
+                            <div
+                              key={post.id}
+                              draggable={isDraggable}
+                              onDragStart={(e) => handlePostDragStart(e, post)}
+                              onDragEnd={handlePostDragEnd}
+                              onClick={() => onPostClick(post)}
+                              className={cn(
+                                "px-1 py-0.5 rounded border text-[10px] cursor-pointer transition-all hover:shadow-sm overflow-hidden",
+                                statusColor,
+                                isDraggable && "cursor-grab active:cursor-grabbing",
+                                selectionMode && canSelect && "hover:ring-2 hover:ring-purple-400",
+                                isSelected && "ring-2 ring-purple-500 bg-purple-50 dark:bg-purple-950/50",
+                                selectionMode && !canSelect && "opacity-50 cursor-not-allowed"
+                              )}
+                            >
+                              <div className="flex items-center gap-0.5 min-w-0">
+                                {selectionMode ? (
+                                  canSelect && (
+                                    <button
+                                      onClick={(e) => handleCheckboxClick(e, post.id)}
+                                      className={cn(
+                                        "w-3 h-3 rounded border flex items-center justify-center flex-shrink-0",
+                                        isSelected
+                                          ? "bg-purple-500 border-purple-500 text-white"
+                                          : "border-gray-400 hover:border-purple-400"
+                                      )}
+                                    >
+                                      {isSelected && <Check className="h-2 w-2" />}
+                                    </button>
+                                  )
+                                ) : (
+                                  isDraggable && (
+                                    <GripVertical className="h-2.5 w-2.5 text-gray-400 flex-shrink-0" />
+                                  )
+                                )}
+                                <Icon className={cn("h-2.5 w-2.5 flex-shrink-0", config.color)} />
+                                <span className="truncate text-gray-700 dark:text-gray-300 font-medium min-w-0">
+                                  {post.topic || post.content.substring(0, 15)}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+
+                        {/* Show more indicator */}
+                        {hourPosts.length > 2 && (
+                          <div className="text-[9px] text-gray-500 dark:text-gray-400 px-0.5 truncate">
+                            +{hourPosts.length - 2}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
-          ))}
+                  );
+                })}
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>

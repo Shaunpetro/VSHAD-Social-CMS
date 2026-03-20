@@ -20,6 +20,12 @@ import {
   AlertCircle,
   CheckCircle,
   XCircle,
+  Heart,
+  MessageCircle,
+  Share2,
+  Eye,
+  TrendingUp,
+  BarChart3,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -32,6 +38,10 @@ interface Post {
   topic: string | null;
   tone: string | null;
   hashtags: string[];
+  likes?: number;
+  comments?: number;
+  shares?: number;
+  impressions?: number;
   platform: {
     id: string;
     type: string;
@@ -65,20 +75,31 @@ const PLATFORM_CONFIG: Record<string, { icon: React.ElementType; color: string; 
 };
 
 const STATUS_CONFIG: Record<string, { icon: React.ElementType; color: string; label: string }> = {
-  SCHEDULED: { icon: Clock, color: "text-blue-600 bg-blue-100 dark:bg-blue-900", label: "Scheduled" },
-  PUBLISHED: { icon: CheckCircle, color: "text-green-600 bg-green-100 dark:bg-green-900", label: "Published" },
+  SCHEDULED: { icon: Clock, color: "text-blue-600 bg-blue-100 dark:bg-blue-900/50", label: "Scheduled" },
+  PUBLISHED: { icon: CheckCircle, color: "text-green-600 bg-green-100 dark:bg-green-900/50", label: "Published" },
   DRAFT: { icon: Edit3, color: "text-gray-600 bg-gray-100 dark:bg-gray-800", label: "Draft" },
-  FAILED: { icon: XCircle, color: "text-red-600 bg-red-100 dark:bg-red-900", label: "Failed" },
-  PUBLISHING: { icon: Loader2, color: "text-yellow-600 bg-yellow-100 dark:bg-yellow-900", label: "Publishing" },
+  FAILED: { icon: XCircle, color: "text-red-600 bg-red-100 dark:bg-red-900/50", label: "Failed" },
+  PUBLISHING: { icon: Loader2, color: "text-yellow-600 bg-yellow-100 dark:bg-yellow-900/50", label: "Publishing" },
 };
 
 export function PostDetailModal({ isOpen, onClose, post, onUpdate }: PostDetailModalProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editedContent, setEditedContent] = useState("");
   const [editedSchedule, setEditedSchedule] = useState("");
+  
+  // Metrics state
+  const [editedLikes, setEditedLikes] = useState<string>("0");
+  const [editedComments, setEditedComments] = useState<string>("0");
+  const [editedShares, setEditedShares] = useState<string>("0");
+  const [editedImpressions, setEditedImpressions] = useState<string>("0");
+  const [isEditingMetrics, setIsEditingMetrics] = useState(false);
+  
   const [isSaving, setIsSaving] = useState(false);
+  const [isSavingMetrics, setIsSavingMetrics] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [metricsError, setMetricsError] = useState<string | null>(null);
+  const [metricsSaved, setMetricsSaved] = useState(false);
 
   useEffect(() => {
     if (post) {
@@ -88,8 +109,15 @@ export function PostDetailModal({ isOpen, onClose, post, onUpdate }: PostDetailM
           ? new Date(post.scheduledFor).toISOString().slice(0, 16)
           : ""
       );
+      setEditedLikes(String(post.likes || 0));
+      setEditedComments(String(post.comments || 0));
+      setEditedShares(String(post.shares || 0));
+      setEditedImpressions(String(post.impressions || 0));
       setIsEditing(false);
+      setIsEditingMetrics(false);
       setError(null);
+      setMetricsError(null);
+      setMetricsSaved(false);
     }
   }, [post]);
 
@@ -100,6 +128,14 @@ export function PostDetailModal({ isOpen, onClose, post, onUpdate }: PostDetailM
   const statusConfig = STATUS_CONFIG[post.status] || STATUS_CONFIG.DRAFT;
   const PlatformIcon = platformConfig.icon;
   const StatusIcon = statusConfig.icon;
+
+  // Calculate engagement metrics
+  const totalEngagement = (post.likes || 0) + (post.comments || 0) + (post.shares || 0);
+  const engagementRate = (post.impressions || 0) > 0 
+    ? ((totalEngagement / (post.impressions || 1)) * 100).toFixed(2)
+    : "0.00";
+  const hasMetrics = (post.likes || 0) > 0 || (post.comments || 0) > 0 || 
+                     (post.shares || 0) > 0 || (post.impressions || 0) > 0;
 
   const handleSave = async () => {
     setIsSaving(true);
@@ -126,6 +162,56 @@ export function PostDetailModal({ isOpen, onClose, post, onUpdate }: PostDetailM
       setError(err instanceof Error ? err.message : "Failed to save");
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleSaveMetrics = async () => {
+    setIsSavingMetrics(true);
+    setMetricsError(null);
+    setMetricsSaved(false);
+
+    // Validate inputs
+    const likes = parseInt(editedLikes, 10);
+    const comments = parseInt(editedComments, 10);
+    const shares = parseInt(editedShares, 10);
+    const impressions = parseInt(editedImpressions, 10);
+
+    if (isNaN(likes) || likes < 0 ||
+        isNaN(comments) || comments < 0 ||
+        isNaN(shares) || shares < 0 ||
+        isNaN(impressions) || impressions < 0) {
+      setMetricsError("All metrics must be non-negative numbers");
+      setIsSavingMetrics(false);
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/posts/${post.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          likes,
+          comments,
+          shares,
+          impressions,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to update metrics");
+      }
+
+      setIsEditingMetrics(false);
+      setMetricsSaved(true);
+      onUpdate();
+
+      // Hide success message after 3 seconds
+      setTimeout(() => setMetricsSaved(false), 3000);
+    } catch (err) {
+      setMetricsError(err instanceof Error ? err.message : "Failed to save metrics");
+    } finally {
+      setIsSavingMetrics(false);
     }
   };
 
@@ -175,6 +261,31 @@ export function PostDetailModal({ isOpen, onClose, post, onUpdate }: PostDetailM
     }
   };
 
+  const handleMarkPublished = async () => {
+    setIsSaving(true);
+    setError(null);
+
+    try {
+      const res = await fetch(`/api/posts/${post.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          status: "PUBLISHED"
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error("Failed to mark as published");
+      }
+
+      onUpdate();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Backdrop */}
@@ -207,10 +318,10 @@ export function PostDetailModal({ isOpen, onClose, post, onUpdate }: PostDetailM
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+        <div className="flex-1 overflow-y-auto p-6 space-y-5">
           {error && (
             <div className="flex items-center gap-2 p-3 bg-red-50 dark:bg-red-950 rounded-lg text-red-700 dark:text-red-300">
-              <AlertCircle className="h-4 w-4" />
+              <AlertCircle className="h-4 w-4 shrink-0" />
               <span className="text-sm">{error}</span>
             </div>
           )}
@@ -235,12 +346,223 @@ export function PostDetailModal({ isOpen, onClose, post, onUpdate }: PostDetailM
               )}
             </div>
 
+            {post.publishedAt && (
+              <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
+                <CheckCircle className="h-4 w-4" />
+                <span>Published: {new Date(post.publishedAt).toLocaleString()}</span>
+              </div>
+            )}
+
             {post.topic && (
               <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
                 <span className="font-medium">Topic:</span>
                 <span>{post.topic}</span>
               </div>
             )}
+          </div>
+
+          {/* Performance Metrics Section */}
+          <div className="rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800">
+              <div className="flex items-center gap-2">
+                <BarChart3 className="h-4 w-4 text-gray-500" />
+                <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+                  Performance Metrics
+                </h3>
+                {hasMetrics && (
+                  <span className="px-2 py-0.5 bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300 text-xs rounded-full">
+                    {engagementRate}% engagement
+                  </span>
+                )}
+              </div>
+              
+              <div className="flex items-center gap-2">
+                {metricsSaved && (
+                  <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
+                    <CheckCircle className="h-3 w-3" />
+                    Saved!
+                  </span>
+                )}
+                
+                {isEditingMetrics ? (
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        setIsEditingMetrics(false);
+                        setEditedLikes(String(post.likes || 0));
+                        setEditedComments(String(post.comments || 0));
+                        setEditedShares(String(post.shares || 0));
+                        setEditedImpressions(String(post.impressions || 0));
+                        setMetricsError(null);
+                      }}
+                      className="px-2 py-1 text-xs text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleSaveMetrics}
+                      disabled={isSavingMetrics}
+                      className="flex items-center gap-1 px-3 py-1 text-xs font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                    >
+                      {isSavingMetrics ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <Save className="h-3 w-3" />
+                      )}
+                      Save
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setIsEditingMetrics(true)}
+                    className="flex items-center gap-1 px-2 py-1 text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-950 rounded transition-colors"
+                  >
+                    <Edit3 className="h-3 w-3" />
+                    {hasMetrics ? "Edit" : "Add Metrics"}
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {metricsError && (
+              <div className="flex items-center gap-2 px-4 py-2 bg-red-50 dark:bg-red-950 text-red-700 dark:text-red-300 text-sm">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                {metricsError}
+              </div>
+            )}
+
+            <div className="p-4">
+              {isEditingMetrics ? (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                  <div>
+                    <label className="flex items-center gap-1.5 text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">
+                      <Eye className="h-3.5 w-3.5" />
+                      Impressions
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={editedImpressions}
+                      onChange={(e) => setEditedImpressions(e.target.value)}
+                      className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="0"
+                    />
+                  </div>
+                  <div>
+                    <label className="flex items-center gap-1.5 text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">
+                      <Heart className="h-3.5 w-3.5 text-red-500" />
+                      Likes
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={editedLikes}
+                      onChange={(e) => setEditedLikes(e.target.value)}
+                      className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="0"
+                    />
+                  </div>
+                  <div>
+                    <label className="flex items-center gap-1.5 text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">
+                      <MessageCircle className="h-3.5 w-3.5 text-blue-500" />
+                      Comments
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={editedComments}
+                      onChange={(e) => setEditedComments(e.target.value)}
+                      className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="0"
+                    />
+                  </div>
+                  <div>
+                    <label className="flex items-center gap-1.5 text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">
+                      <Share2 className="h-3.5 w-3.5 text-green-500" />
+                      Shares
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={editedShares}
+                      onChange={(e) => setEditedShares(e.target.value)}
+                      className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="0"
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
+                      <Eye className="h-5 w-5 text-gray-500" />
+                    </div>
+                    <div>
+                      <div className="text-lg font-bold text-gray-900 dark:text-white">
+                        {(post.impressions || 0).toLocaleString()}
+                      </div>
+                      <div className="text-xs text-gray-500">Impressions</div>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-red-50 dark:bg-red-900/30 flex items-center justify-center">
+                      <Heart className="h-5 w-5 text-red-500" />
+                    </div>
+                    <div>
+                      <div className="text-lg font-bold text-gray-900 dark:text-white">
+                        {(post.likes || 0).toLocaleString()}
+                      </div>
+                      <div className="text-xs text-gray-500">Likes</div>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center">
+                      <MessageCircle className="h-5 w-5 text-blue-500" />
+                    </div>
+                    <div>
+                      <div className="text-lg font-bold text-gray-900 dark:text-white">
+                        {(post.comments || 0).toLocaleString()}
+                      </div>
+                      <div className="text-xs text-gray-500">Comments</div>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-green-50 dark:bg-green-900/30 flex items-center justify-center">
+                      <Share2 className="h-5 w-5 text-green-500" />
+                    </div>
+                    <div>
+                      <div className="text-lg font-bold text-gray-900 dark:text-white">
+                        {(post.shares || 0).toLocaleString()}
+                      </div>
+                      <div className="text-xs text-gray-500">Shares</div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {!isEditingMetrics && hasMetrics && (
+                <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-800">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+                      <TrendingUp className="h-4 w-4" />
+                      <span>Total Engagement</span>
+                    </div>
+                    <div className="text-lg font-bold text-gray-900 dark:text-white">
+                      {totalEngagement.toLocaleString()}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {!isEditingMetrics && !hasMetrics && (
+                <div className="text-center py-4 text-sm text-gray-500">
+                  No engagement data yet. Click &quot;Add Metrics&quot; to enter performance data.
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Content */}
@@ -331,13 +653,23 @@ export function PostDetailModal({ isOpen, onClose, post, onUpdate }: PostDetailM
             </button>
 
             {post.status === "SCHEDULED" && (
-              <button
-                onClick={() => handleReschedule("DRAFT")}
-                disabled={isSaving}
-                className="flex items-center gap-1 px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors disabled:opacity-50"
-              >
-                Move to Draft
-              </button>
+              <>
+                <button
+                  onClick={() => handleReschedule("DRAFT")}
+                  disabled={isSaving}
+                  className="flex items-center gap-1 px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors disabled:opacity-50"
+                >
+                  Move to Draft
+                </button>
+                <button
+                  onClick={handleMarkPublished}
+                  disabled={isSaving}
+                  className="flex items-center gap-1 px-3 py-2 text-sm text-green-600 hover:bg-green-50 dark:hover:bg-green-950 rounded-lg transition-colors disabled:opacity-50"
+                >
+                  <CheckCircle className="h-4 w-4" />
+                  Mark Published
+                </button>
+              </>
             )}
 
             {post.status === "DRAFT" && post.scheduledFor && (

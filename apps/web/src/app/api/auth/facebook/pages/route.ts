@@ -1,7 +1,10 @@
+// apps/web/src/app/api/auth/facebook/pages/route.ts
+
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { getFacebookPages } from '@/lib/oauth/facebook';
 
+// GET: Fetch available pages for a pending connection
 export async function GET(request: NextRequest) {
   try {
     const connectionId = request.nextUrl.searchParams.get('connectionId');
@@ -13,26 +16,27 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const connection = await prisma.platformConnection.findUnique({
+    const platform = await prisma.platform.findUnique({
       where: { id: connectionId },
     });
 
-    if (!connection) {
+    if (!platform) {
       return NextResponse.json(
         { error: 'Connection not found' },
         { status: 404 }
       );
     }
 
-    if (connection.status !== 'pending_page_selection') {
+    const connectionData = platform.connectionData as Record<string, unknown> | null;
+
+    if (!connectionData?.pendingPageSelection) {
       return NextResponse.json(
         { error: 'Connection is not pending page selection' },
         { status: 400 }
       );
     }
 
-    const config = connection.config as Record<string, unknown>;
-    const pages = (config?.pages as Array<{ id: string; name: string; category: string }>) || [];
+    const pages = (connectionData.availablePages as Array<{ id: string; name: string; category: string }>) || [];
 
     return NextResponse.json({ pages });
   } catch (error) {
@@ -44,6 +48,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
+// POST: Select a page to complete the connection
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -56,27 +61,44 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const connection = await prisma.platformConnection.findUnique({
+    const platform = await prisma.platform.findUnique({
       where: { id: connectionId },
+      include: {
+        company: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
     });
 
-    if (!connection) {
+    if (!platform) {
       return NextResponse.json(
         { error: 'Connection not found' },
         { status: 404 }
       );
     }
 
-    if (connection.status !== 'pending_page_selection') {
+    const connectionData = platform.connectionData as Record<string, unknown> | null;
+
+    if (!connectionData?.pendingPageSelection) {
       return NextResponse.json(
         { error: 'Connection is not pending page selection' },
         { status: 400 }
       );
     }
 
-    const config = connection.config as Record<string, unknown>;
-    const userToken = (config?.userToken as string) || connection.accessToken;
+    const userToken = connectionData.userAccessToken as string;
 
+    if (!userToken) {
+      return NextResponse.json(
+        { error: 'User token not found. Please reconnect Facebook.' },
+        { status: 400 }
+      );
+    }
+
+    // Fetch fresh page data with access tokens
     const pages = await getFacebookPages(userToken);
     const selectedPage = pages.find((p) => p.id === pageId);
 
@@ -87,18 +109,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const updatedConnection = await prisma.platformConnection.update({
+    // Update the platform with the selected page
+    const updatedConnectionData = {
+      accessToken: selectedPage.access_token,
+      userAccessToken: userToken,
+      expiresAt: connectionData.expiresAt,
+      scopes: connectionData.scopes,
+      pageId: selectedPage.id,
+      pageName: selectedPage.name,
+      pageCategory: selectedPage.category,
+      connectedAt: new Date().toISOString(),
+      pendingPageSelection: false,
+      availablePages: undefined, // Remove available pages after selection
+    };
+
+    const updatedPlatform = await prisma.platform.update({
       where: { id: connectionId },
       data: {
-        accountName: selectedPage.name,
-        accessToken: selectedPage.access_token,
-        status: 'connected',
-        config: {
-          pageId: selectedPage.id,
-          pageName: selectedPage.name,
-          pageCategory: selectedPage.category,
-          connectedAt: new Date().toISOString(),
-        },
+        username: selectedPage.name,
+        isConnected: true,
+        connectionData: updatedConnectionData,
+        lastSyncAt: new Date(),
       },
       include: {
         company: {
@@ -110,7 +141,20 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    return NextResponse.json(updatedConnection);
+    // Transform to match expected frontend format
+    const connection = {
+      id: updatedPlatform.id,
+      platform: updatedPlatform.type.toLowerCase(),
+      accountName: updatedPlatform.username || updatedPlatform.name,
+      status: 'connected',
+      companyId: updatedPlatform.companyId,
+      company: updatedPlatform.company,
+      lastSyncAt: updatedPlatform.lastSyncAt,
+      createdAt: updatedPlatform.createdAt,
+      updatedAt: updatedPlatform.updatedAt,
+    };
+
+    return NextResponse.json(connection);
   } catch (error) {
     console.error('Failed to select Facebook page:', error);
     return NextResponse.json(
