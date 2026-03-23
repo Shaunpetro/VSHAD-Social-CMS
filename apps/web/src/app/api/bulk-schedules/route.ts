@@ -564,7 +564,7 @@ ${postMedia.length > 0 ? `\nNOTE: This post will include ${postMedia.length} ima
       where: { id: bulkSchedule.id },
       data: {
         postsCount: createdPosts.length,
-        status: createdPosts.length > 0 ? BulkScheduleStatus.ACTIVE : BulkScheduleStatus.FAILED,
+        status: createdPosts.length > 0 ? BulkScheduleStatus.ACTIVE : BulkScheduleStatus.CANCELLED,
       },
     });
 
