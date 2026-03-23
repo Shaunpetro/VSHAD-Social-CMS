@@ -8,6 +8,7 @@ import {
   getLinkedInProfile,
   getLinkedInOrganizations,
   encodeOrganizations,
+  LinkedInOrganization,
 } from '@/lib/oauth/linkedin';
 
 const getAppUrl = () => {
@@ -78,13 +79,21 @@ export async function GET(request: NextRequest) {
       picture: profile.picture || null,
       connectedAt: new Date().toISOString(),
       // These will be set based on selection
-      postingMode: 'personal' as 'personal' | 'organization',
+      postingMode: 'personal' as const,
       organizationId: null as string | null,
       organizationName: null as string | null,
     };
 
     // If user has organizations, redirect to selection page
     if (organizations.length > 0) {
+      // Convert organizations to plain JSON-compatible objects
+      const orgsForStorage = organizations.map(org => ({
+        id: org.id,
+        name: org.name,
+        vanityName: org.vanityName || null,
+        logoUrl: org.logoUrl || null,
+      }));
+
       // Store pending connection data in the platform record
       const existing = await prisma.platform.findFirst({
         where: {
@@ -96,7 +105,7 @@ export async function GET(request: NextRequest) {
       const pendingData = {
         ...baseConnectionData,
         pendingSelection: true,
-        availableOrganizations: organizations,
+        availableOrganizations: orgsForStorage,
       };
 
       if (existing) {
