@@ -1,4 +1,5 @@
 import { Metadata } from "next";
+import Link from "next/link";
 
 export const metadata: Metadata = {
   title: "Terms of Service | VSHAD RoboSocial",
@@ -174,12 +175,12 @@ export default function TermsOfServicePage() {
         </div>
 
         <div className="mt-12 pt-8 border-t border-gray-800">
-          <a 
+          <Link 
             href="/" 
             className="text-blue-400 hover:text-blue-300 transition-colors"
           >
             ← Back to App
-          </a>
+          </Link>
         </div>
       </div>
     </div>
