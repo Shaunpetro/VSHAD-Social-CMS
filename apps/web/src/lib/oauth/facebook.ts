@@ -30,8 +30,8 @@ export const FACEBOOK_SCOPES_PRODUCTION = [
   'pages_read_user_content',
 ].join(',');
 
-// Use minimal scopes for development
-const USE_MINIMAL_SCOPES = true;
+// ⬇️ CHANGED: false to enable full publishing permissions
+const USE_MINIMAL_SCOPES = false;
 
 export const FACEBOOK_SCOPES = USE_MINIMAL_SCOPES
   ? FACEBOOK_SCOPES_MINIMAL
@@ -47,17 +47,17 @@ export const FACEBOOK_SCOPES = USE_MINIMAL_SCOPES
  */
 function getAppUrl(): string {
   const envUrl = process.env.NEXT_PUBLIC_APP_URL;
-  
+
   // Hardcoded production URL as fallback
   const productionUrl = 'https://atgihubrobosocial.vercel.app';
-  
+
   let baseUrl = envUrl || productionUrl;
-  
+
   // Remove trailing slash if present
   if (baseUrl.endsWith('/')) {
     baseUrl = baseUrl.slice(0, -1);
   }
-  
+
   return baseUrl;
 }
 
@@ -92,7 +92,7 @@ export function decodeOAuthState(state: string): Record<string, string> {
 
 export function getFacebookAuthUrl(companyId: string): string {
   const redirectUri = getFacebookRedirectUri();
-  
+
   const state = encodeOAuthState({
     companyId,
     platform: 'facebook',
@@ -110,7 +110,7 @@ export function getFacebookAuthUrl(companyId: string): string {
   });
 
   const authUrl = `${FB_AUTH_URL}?${params.toString()}`;
-  
+
   console.log('[Facebook OAuth] === AUTH URL DEBUG ===');
   console.log('[Facebook OAuth] App URL:', getAppUrl());
   console.log('[Facebook OAuth] Redirect URI:', redirectUri);
@@ -128,7 +128,7 @@ export async function exchangeFacebookCode(code: string, stateRedirectUri?: stri
   // Use the redirect URI from state if provided, otherwise generate it
   // This ensures we use the EXACT same URI that was used in the auth request
   const redirectUri = stateRedirectUri || getFacebookRedirectUri();
-  
+
   console.log('[Facebook OAuth] === TOKEN EXCHANGE DEBUG ===');
   console.log('[Facebook OAuth] Using redirect URI:', redirectUri);
   console.log('[Facebook OAuth] State redirect URI provided:', !!stateRedirectUri);
@@ -141,7 +141,7 @@ export async function exchangeFacebookCode(code: string, stateRedirectUri?: stri
   });
 
   const tokenUrl = `${FB_TOKEN_URL}?${params.toString()}`;
-  console.log('[Facebook OAuth] Token URL (without secrets):', 
+  console.log('[Facebook OAuth] Token URL (without secrets):',
     tokenUrl.replace(process.env.FACEBOOK_APP_SECRET || '', '[REDACTED]'));
 
   const res = await fetch(tokenUrl);
