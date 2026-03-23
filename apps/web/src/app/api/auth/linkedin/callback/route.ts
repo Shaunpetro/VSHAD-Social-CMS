@@ -8,12 +8,27 @@ import {
   getLinkedInProfile,
   getLinkedInOrganizations,
   encodeOrganizations,
-  LinkedInOrganization,
 } from '@/lib/oauth/linkedin';
 
-const getAppUrl = () => {
-  return process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-};
+/**
+ * Get the base app URL, normalized (no trailing slash)
+ * Hardcoded fallback for production to avoid env var issues
+ */
+function getAppUrl(): string {
+  const envUrl = process.env.NEXT_PUBLIC_APP_URL;
+
+  // Hardcoded production URL as fallback
+  const productionUrl = 'https://atgihubrobosocial.vercel.app';
+
+  let baseUrl = envUrl || productionUrl;
+
+  // Remove trailing slash if present
+  if (baseUrl.endsWith('/')) {
+    baseUrl = baseUrl.slice(0, -1);
+  }
+
+  return baseUrl;
+}
 
 export async function GET(request: NextRequest) {
   const appUrl = getAppUrl();
