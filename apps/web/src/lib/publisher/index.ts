@@ -175,6 +175,8 @@ async function publishToLinkedIn(
 ): Promise<PublishResult> {
   const accessToken = connectionData.accessToken as string;
   const linkedinSub = connectionData.linkedinSub as string;
+  const postingMode = (connectionData.postingMode as 'personal' | 'organization') || 'personal';
+  const organizationId = connectionData.organizationId as string | null;
 
   if (!accessToken || !linkedinSub) {
     return {
@@ -194,17 +196,16 @@ async function publishToLinkedIn(
     };
   }
 
-  // Log media info (LinkedIn image upload is more complex, will be added later)
-  if (mediaUrls.length > 0) {
-    console.log('[LinkedIn Publisher] Media URLs provided but LinkedIn image upload not yet implemented:', mediaUrls);
-  }
+  console.log('[LinkedIn Publisher] Publishing with mode:', postingMode, 'organizationId:', organizationId);
 
-  // Create the post
+  // Create the post with organization support
   const result = await createLinkedInPost({
     accessToken,
     authorId: linkedinSub,
     content,
-    mediaUrls, // Pass for future use
+    mediaUrls,
+    postingMode,
+    organizationId,
   });
 
   return {
@@ -246,7 +247,7 @@ async function publishToFacebook(
     pageAccessToken,
     pageId,
     content,
-    mediaUrls, // ✅ NOW PASSING MEDIA URLS!
+    mediaUrls,
   });
 
   return {

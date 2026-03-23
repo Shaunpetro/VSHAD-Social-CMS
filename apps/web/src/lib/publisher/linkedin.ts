@@ -8,6 +8,9 @@ export interface LinkedInPostOptions {
   content: string;
   title?: string;
   mediaUrls?: string[];
+  // New: organization posting support
+  postingMode?: 'personal' | 'organization';
+  organizationId?: string | null;
 }
 
 export interface LinkedInPostResult {
@@ -28,17 +31,27 @@ interface LinkedInAsset {
 
 /**
  * Create a post on LinkedIn (with optional images)
+ * Supports both personal profile and organization/company page posting
  */
 export async function createLinkedInPost(options: LinkedInPostOptions): Promise<LinkedInPostResult> {
-  const { accessToken, authorId, content, mediaUrls } = options;
+  const { accessToken, authorId, content, mediaUrls, postingMode = 'personal', organizationId } = options;
 
-  // LinkedIn requires URN format for author
-  const authorUrn = authorId.startsWith('urn:li:person:')
-    ? authorId
-    : `urn:li:person:${authorId}`;
+  // Determine the author URN based on posting mode
+  let authorUrn: string;
+  
+  if (postingMode === 'organization' && organizationId) {
+    authorUrn = `urn:li:organization:${organizationId}`;
+    console.log('[LinkedIn Publisher] Posting to ORGANIZATION:', authorUrn);
+  } else {
+    authorUrn = authorId.startsWith('urn:li:person:')
+      ? authorId
+      : `urn:li:person:${authorId}`;
+    console.log('[LinkedIn Publisher] Posting to PERSONAL profile:', authorUrn);
+  }
 
   console.log('[LinkedIn Publisher] Creating post:', {
     authorUrn,
+    postingMode,
     contentLength: content.length,
     mediaCount: mediaUrls?.length || 0,
   });
@@ -91,7 +104,7 @@ async function createLinkedInTextPost(
       body: JSON.stringify(postPayload),
     });
 
-    return handleLinkedInPostResponse(response);
+    return handleLinkedInPostResponse(response, authorUrn);
   } catch (error) {
     console.error('[LinkedIn Publisher] Text post creation failed:', error);
     return {
@@ -170,7 +183,7 @@ async function createLinkedInPostWithImages(
       body: JSON.stringify(postPayload),
     });
 
-    return handleLinkedInPostResponse(response);
+    return handleLinkedInPostResponse(response, authorUrn);
   } catch (error) {
     console.error('[LinkedIn Publisher] Image post creation failed:', error);
     return {
@@ -341,7 +354,7 @@ async function registerLinkedInUpload(
 // RESPONSE HANDLER
 // ============================================
 
-async function handleLinkedInPostResponse(response: Response): Promise<LinkedInPostResult> {
+async function handleLinkedInPostResponse(response: Response, authorUrn: string): Promise<LinkedInPostResult> {
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
     const errorMessage = (errorData as { message?: string }).message
@@ -391,22 +404,23 @@ async function handleLinkedInPostResponse(response: Response): Promise<LinkedInP
 
   const finalPostId = postId || postIdFromBody;
 
-  if (!finalPostId) {
-    return {
-      success: true,
-      postId: 'unknown',
-      postUrl: 'https://www.linkedin.com/feed/',
-    };
+  // Determine post URL based on whether it's an org or personal post
+  let postUrl: string;
+  if (authorUrn.includes('organization')) {
+    postUrl = finalPostId 
+      ? `https://www.linkedin.com/feed/update/${finalPostId}`
+      : 'https://www.linkedin.com/company/';
+  } else {
+    postUrl = finalPostId
+      ? `https://www.linkedin.com/feed/update/${finalPostId}`
+      : 'https://www.linkedin.com/feed/';
   }
-
-  // Construct the post URL
-  const postUrl = `https://www.linkedin.com/feed/update/${finalPostId}`;
 
   console.log('[LinkedIn Publisher] Post created successfully:', finalPostId);
 
   return {
     success: true,
-    postId: finalPostId,
+    postId: finalPostId || 'unknown',
     postUrl,
   };
 }
