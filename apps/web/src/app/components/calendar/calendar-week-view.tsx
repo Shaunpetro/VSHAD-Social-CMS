@@ -1,4 +1,4 @@
-// apps/web/src/app/components/calendar/calendar-week-view.tsx
+﻿// apps/web/src/app/components/calendar/calendar-week-view.tsx
 "use client";
 
 import { useState, DragEvent, MouseEvent } from "react";
@@ -18,12 +18,28 @@ interface Post {
   content: string;
   status: string;
   scheduledFor: string | null;
+  publishedAt: string | null;
   topic: string | null;
+  tone: string | null;
+  hashtags: string[];
+  likes?: number;
+  comments?: number;
+  shares?: number;
+  impressions?: number;
   platform: {
     id: string;
     type: string;
     name: string | null;
   } | null;
+  postMedia: Array<{
+    id: string;
+    media: {
+      id: string;
+      url: string;
+      type: string;
+      filename: string;
+    };
+  }>;
 }
 
 interface DayData {
