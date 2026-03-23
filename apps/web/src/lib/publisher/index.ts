@@ -83,6 +83,13 @@ export async function publishPost(options: PublishOptions): Promise<PublishResul
     ).join(' ');
   }
 
+  // Extract media URLs from postMedia relation
+  const mediaUrls = post.postMedia
+    .map(pm => pm.media?.url)
+    .filter((url): url is string => !!url && url.trim().length > 0);
+
+  console.log('[Publisher] Post media URLs:', mediaUrls);
+
   // Dry run - just validate without publishing
   if (dryRun) {
     return {
@@ -106,11 +113,11 @@ export async function publishPost(options: PublishOptions): Promise<PublishResul
   try {
     switch (platform.type) {
       case 'LINKEDIN':
-        result = await publishToLinkedIn(content, connectionData);
+        result = await publishToLinkedIn(content, connectionData, mediaUrls);
         break;
 
       case 'FACEBOOK':
-        result = await publishToFacebook(content, connectionData);
+        result = await publishToFacebook(content, connectionData, mediaUrls);
         break;
 
       default:
@@ -128,8 +135,6 @@ export async function publishPost(options: PublishOptions): Promise<PublishResul
         data: {
           status: 'PUBLISHED',
           publishedAt: new Date(),
-          // Store external references in a way that works with current schema
-          // We'll use the topic field temporarily or add to schema later
         },
       });
     } else {
@@ -165,7 +170,8 @@ export async function publishPost(options: PublishOptions): Promise<PublishResul
 
 async function publishToLinkedIn(
   content: string,
-  connectionData: Record<string, unknown>
+  connectionData: Record<string, unknown>,
+  mediaUrls: string[] = []
 ): Promise<PublishResult> {
   const accessToken = connectionData.accessToken as string;
   const linkedinSub = connectionData.linkedinSub as string;
@@ -188,11 +194,17 @@ async function publishToLinkedIn(
     };
   }
 
+  // Log media info (LinkedIn image upload is more complex, will be added later)
+  if (mediaUrls.length > 0) {
+    console.log('[LinkedIn Publisher] Media URLs provided but LinkedIn image upload not yet implemented:', mediaUrls);
+  }
+
   // Create the post
   const result = await createLinkedInPost({
     accessToken,
     authorId: linkedinSub,
     content,
+    mediaUrls, // Pass for future use
   });
 
   return {
@@ -203,7 +215,8 @@ async function publishToLinkedIn(
 
 async function publishToFacebook(
   content: string,
-  connectionData: Record<string, unknown>
+  connectionData: Record<string, unknown>,
+  mediaUrls: string[] = []
 ): Promise<PublishResult> {
   const pageAccessToken = connectionData.accessToken as string;
   const pageId = connectionData.pageId as string;
@@ -226,11 +239,14 @@ async function publishToFacebook(
     };
   }
 
-  // Create the post
+  console.log('[Facebook Publisher] Publishing with', mediaUrls.length, 'media items');
+
+  // Create the post WITH media URLs
   const result = await createFacebookPost({
     pageAccessToken,
     pageId,
     content,
+    mediaUrls, // ✅ NOW PASSING MEDIA URLS!
   });
 
   return {
