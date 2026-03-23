@@ -39,31 +39,30 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Build the final connection data
+    // Build the final connection data with explicit typing
     const isOrganization = selection !== 'personal' && organizationId;
 
-    const connectionData = {
-      accessToken: existingData.accessToken,
-      expiresAt: existingData.expiresAt,
-      scopes: existingData.scopes,
-      linkedinSub: existingData.linkedinSub,
-      email: existingData.email,
-      name: existingData.name,
-      picture: existingData.picture,
-      connectedAt: existingData.connectedAt,
+    const connectionData: Record<string, string | string[] | boolean | null> = {
+      accessToken: String(existingData.accessToken || ''),
+      expiresAt: String(existingData.expiresAt || ''),
+      scopes: Array.isArray(existingData.scopes) 
+        ? existingData.scopes.map(s => String(s)) 
+        : [],
+      linkedinSub: String(existingData.linkedinSub || ''),
+      email: String(existingData.email || ''),
+      name: String(existingData.name || ''),
+      picture: existingData.picture ? String(existingData.picture) : null,
+      connectedAt: String(existingData.connectedAt || new Date().toISOString()),
       // Selection-specific fields
       postingMode: isOrganization ? 'organization' : 'personal',
-      organizationId: isOrganization ? organizationId : null,
-      organizationName: isOrganization ? organizationName : null,
-      // Remove pending flag and available orgs
-      pendingSelection: undefined,
-      availableOrganizations: undefined,
+      organizationId: isOrganization ? String(organizationId) : null,
+      organizationName: isOrganization ? String(organizationName) : null,
     };
 
     // Determine display name
     const displayName = isOrganization
-      ? organizationName || 'LinkedIn Page'
-      : (existingData.name as string) || 'LinkedIn Profile';
+      ? String(organizationName || 'LinkedIn Page')
+      : String(existingData.name || 'LinkedIn Profile');
 
     // Update the platform record
     await prisma.platform.update({
