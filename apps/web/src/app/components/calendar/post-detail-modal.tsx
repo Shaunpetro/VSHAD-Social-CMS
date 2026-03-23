@@ -26,6 +26,8 @@ import {
   Eye,
   TrendingUp,
   BarChart3,
+  Send,
+  ExternalLink,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -97,9 +99,15 @@ export function PostDetailModal({ isOpen, onClose, post, onUpdate }: PostDetailM
   const [isSaving, setIsSaving] = useState(false);
   const [isSavingMetrics, setIsSavingMetrics] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isPublishing, setIsPublishing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [metricsError, setMetricsError] = useState<string | null>(null);
   const [metricsSaved, setMetricsSaved] = useState(false);
+  const [publishResult, setPublishResult] = useState<{
+    success: boolean;
+    postUrl?: string;
+    error?: string;
+  } | null>(null);
 
   useEffect(() => {
     if (post) {
@@ -118,6 +126,7 @@ export function PostDetailModal({ isOpen, onClose, post, onUpdate }: PostDetailM
       setError(null);
       setMetricsError(null);
       setMetricsSaved(false);
+      setPublishResult(null);
     }
   }, [post]);
 
@@ -136,6 +145,9 @@ export function PostDetailModal({ isOpen, onClose, post, onUpdate }: PostDetailM
     : "0.00";
   const hasMetrics = (post.likes || 0) > 0 || (post.comments || 0) > 0 || 
                      (post.shares || 0) > 0 || (post.impressions || 0) > 0;
+
+  // Check if post can be published
+  const canPublish = post.status !== "PUBLISHED" && post.status !== "PUBLISHING" && post.platform;
 
   const handleSave = async () => {
     setIsSaving(true);
@@ -261,6 +273,45 @@ export function PostDetailModal({ isOpen, onClose, post, onUpdate }: PostDetailM
     }
   };
 
+  const handlePublishNow = async () => {
+    if (!confirm(`Publish this post to ${platformConfig.label} now?`)) return;
+
+    setIsPublishing(true);
+    setError(null);
+    setPublishResult(null);
+
+    try {
+      const res = await fetch("/api/publish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ postId: post.id }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.result?.error || data.error || "Failed to publish");
+      }
+
+      setPublishResult({
+        success: true,
+        postUrl: data.result?.postUrl,
+      });
+
+      // Refresh the post data
+      onUpdate();
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "Failed to publish";
+      setPublishResult({
+        success: false,
+        error: errorMessage,
+      });
+      setError(errorMessage);
+    } finally {
+      setIsPublishing(false);
+    }
+  };
+
   const handleMarkPublished = async () => {
     setIsSaving(true);
     setError(null);
@@ -323,6 +374,27 @@ export function PostDetailModal({ isOpen, onClose, post, onUpdate }: PostDetailM
             <div className="flex items-center gap-2 p-3 bg-red-50 dark:bg-red-950 rounded-lg text-red-700 dark:text-red-300">
               <AlertCircle className="h-4 w-4 shrink-0" />
               <span className="text-sm">{error}</span>
+            </div>
+          )}
+
+          {/* Publish Success Message */}
+          {publishResult?.success && (
+            <div className="flex items-center justify-between p-4 bg-green-50 dark:bg-green-950 rounded-lg border border-green-200 dark:border-green-800">
+              <div className="flex items-center gap-2 text-green-700 dark:text-green-300">
+                <CheckCircle className="h-5 w-5" />
+                <span className="font-medium">Successfully published to {platformConfig.label}!</span>
+              </div>
+              {publishResult.postUrl && (
+                <a
+                  href={publishResult.postUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1 px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors"
+                >
+                  View Post
+                  <ExternalLink className="h-3.5 w-3.5" />
+                </a>
+              )}
             </div>
           )}
 
@@ -653,23 +725,13 @@ export function PostDetailModal({ isOpen, onClose, post, onUpdate }: PostDetailM
             </button>
 
             {post.status === "SCHEDULED" && (
-              <>
-                <button
-                  onClick={() => handleReschedule("DRAFT")}
-                  disabled={isSaving}
-                  className="flex items-center gap-1 px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors disabled:opacity-50"
-                >
-                  Move to Draft
-                </button>
-                <button
-                  onClick={handleMarkPublished}
-                  disabled={isSaving}
-                  className="flex items-center gap-1 px-3 py-2 text-sm text-green-600 hover:bg-green-50 dark:hover:bg-green-950 rounded-lg transition-colors disabled:opacity-50"
-                >
-                  <CheckCircle className="h-4 w-4" />
-                  Mark Published
-                </button>
-              </>
+              <button
+                onClick={() => handleReschedule("DRAFT")}
+                disabled={isSaving}
+                className="flex items-center gap-1 px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors disabled:opacity-50"
+              >
+                Move to Draft
+              </button>
             )}
 
             {post.status === "DRAFT" && post.scheduledFor && (
@@ -702,13 +764,53 @@ export function PostDetailModal({ isOpen, onClose, post, onUpdate }: PostDetailM
                 </button>
               </>
             ) : (
-              <button
-                onClick={() => setIsEditing(true)}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-              >
-                <Edit3 className="h-4 w-4" />
-                Edit Post
-              </button>
+              <>
+                <button
+                  onClick={() => setIsEditing(true)}
+                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                >
+                  <Edit3 className="h-4 w-4" />
+                  Edit
+                </button>
+
+                {/* PUBLISH NOW BUTTON */}
+                {canPublish && (
+                  <button
+                    onClick={handlePublishNow}
+                    disabled={isPublishing}
+                    className={cn(
+                      "flex items-center gap-2 px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors disabled:opacity-50",
+                      platformConfig.color,
+                      "hover:opacity-90"
+                    )}
+                  >
+                    {isPublishing ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Publishing...
+                      </>
+                    ) : (
+                      <>
+                        <Send className="h-4 w-4" />
+                        Publish Now
+                      </>
+                    )}
+                  </button>
+                )}
+
+                {/* Mark as Published (for manual tracking) */}
+                {post.status === "SCHEDULED" && (
+                  <button
+                    onClick={handleMarkPublished}
+                    disabled={isSaving}
+                    className="flex items-center gap-1 px-3 py-2 text-sm text-green-600 hover:bg-green-50 dark:hover:bg-green-950 rounded-lg transition-colors disabled:opacity-50"
+                    title="Mark as published without actually publishing (for manual posts)"
+                  >
+                    <CheckCircle className="h-4 w-4" />
+                    Mark Published
+                  </button>
+                )}
+              </>
             )}
           </div>
         </div>
