@@ -6,17 +6,11 @@ import {
   X, Loader2, Globe, Building2, FileText, MessageSquare,
   Tag, Sparkles, CheckCircle2, AlertCircle,
 } from 'lucide-react';
+import type { Company } from '@/types/company';
 
-interface Company {
-  id: string;
-  name: string;
-  website: string;
-  industry: string | null;
-  description: string | null;
-  logo: string | null;
-  brandVoice: string;
-  keywords: string[];
-}
+// ═══════════════════════════════════════════════════════════════
+// Props
+// ═══════════════════════════════════════════════════════════════
 
 interface CompanyFormProps {
   open: boolean;
@@ -25,6 +19,10 @@ interface CompanyFormProps {
   editCompany?: Company | null;
 }
 
+// ═══════════════════════════════════════════════════════════════
+// Constants
+// ═══════════════════════════════════════════════════════════════
+
 const brandVoiceOptions = [
   { value: 'professional', label: 'Professional', description: 'Formal and business-oriented' },
   { value: 'casual', label: 'Casual', description: 'Relaxed and conversational' },
@@ -32,6 +30,10 @@ const brandVoiceOptions = [
   { value: 'friendly', label: 'Friendly', description: 'Warm and approachable' },
   { value: 'authoritative', label: 'Authoritative', description: 'Expert and commanding' },
 ];
+
+// ═══════════════════════════════════════════════════════════════
+// Component
+// ═══════════════════════════════════════════════════════════════
 
 export function CompanyForm({ open, onClose, onSuccess, editCompany }: CompanyFormProps) {
   const [loading, setLoading] = useState(false);
@@ -55,13 +57,13 @@ export function CompanyForm({ open, onClose, onSuccess, editCompany }: CompanyFo
   useEffect(() => {
     if (editCompany) {
       setForm({
-        name: editCompany.name,
-        website: editCompany.website,
+        name: editCompany.name || '',
+        website: editCompany.website || '',
         industry: editCompany.industry || '',
         description: editCompany.description || '',
-        logo: editCompany.logo || '',
-        brandVoice: editCompany.brandVoice,
-        keywords: editCompany.keywords,
+        logo: editCompany.logo || editCompany.logoUrl || '',
+        brandVoice: editCompany.brandVoice || 'professional',
+        keywords: editCompany.keywords || [],
       });
     } else {
       setForm({
