@@ -20,6 +20,7 @@ interface Post {
   scheduledFor: string | null;
   publishedAt: string | null;
   topic: string | null;
+  tone: string | null;  // ← ADDED
   hashtags: string[];
   platform: {
     id: string;
