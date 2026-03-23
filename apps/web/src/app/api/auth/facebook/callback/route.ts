@@ -10,7 +10,13 @@ import {
 } from '@/lib/oauth/facebook';
 
 const getAppUrl = () => {
-  return process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+  const envUrl = process.env.NEXT_PUBLIC_APP_URL;
+  const productionUrl = 'https://atgihubrobosocial.vercel.app';
+  let baseUrl = envUrl || productionUrl;
+  if (baseUrl.endsWith('/')) {
+    baseUrl = baseUrl.slice(0, -1);
+  }
+  return baseUrl;
 };
 
 export async function GET(request: NextRequest) {
@@ -21,6 +27,11 @@ export async function GET(request: NextRequest) {
     const state = request.nextUrl.searchParams.get('state');
     const error = request.nextUrl.searchParams.get('error');
     const errorReason = request.nextUrl.searchParams.get('error_reason');
+
+    console.log('[Facebook Callback] === CALLBACK DEBUG ===');
+    console.log('[Facebook Callback] App URL:', appUrl);
+    console.log('[Facebook Callback] Has code:', !!code);
+    console.log('[Facebook Callback] Has state:', !!state);
 
     if (error) {
       console.error('Facebook OAuth error:', error, errorReason);
@@ -37,7 +48,10 @@ export async function GET(request: NextRequest) {
     }
 
     const stateData = decodeOAuthState(state);
-    const { companyId } = stateData;
+    const { companyId, redirectUri: stateRedirectUri } = stateData;
+
+    console.log('[Facebook Callback] Company ID:', companyId);
+    console.log('[Facebook Callback] Redirect URI from state:', stateRedirectUri);
 
     if (!companyId) {
       return NextResponse.redirect(
@@ -56,10 +70,13 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Exchange code for tokens
-    const shortToken = await exchangeFacebookCode(code);
+    // Exchange code for tokens - pass the redirect URI from state to ensure match
+    const shortToken = await exchangeFacebookCode(code, stateRedirectUri);
     const longLived = await getLongLivedToken(shortToken.access_token);
     const pages = await getFacebookPages(longLived.access_token);
+
+    console.log('[Facebook Callback] Token exchange successful');
+    console.log('[Facebook Callback] Pages found:', pages.length);
 
     if (pages.length === 0) {
       return NextResponse.redirect(
@@ -91,7 +108,6 @@ export async function GET(request: NextRequest) {
       });
 
       if (existing) {
-        // Update existing platform connection
         await prisma.platform.update({
           where: { id: existing.id },
           data: {
@@ -102,7 +118,6 @@ export async function GET(request: NextRequest) {
           },
         });
       } else {
-        // Create new platform connection
         await prisma.platform.create({
           data: {
             type: 'FACEBOOK',
@@ -135,7 +150,6 @@ export async function GET(request: NextRequest) {
       connectedAt: new Date().toISOString(),
     };
 
-    // Check if Facebook platform already exists for this company
     const existing = await prisma.platform.findFirst({
       where: {
         type: 'FACEBOOK',
