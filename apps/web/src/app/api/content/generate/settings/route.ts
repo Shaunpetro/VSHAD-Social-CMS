@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    let settings = await db.contentSettings.findUnique({
+    const settings = await db.contentSettings.findUnique({
       where: { companyId },
     });
 
