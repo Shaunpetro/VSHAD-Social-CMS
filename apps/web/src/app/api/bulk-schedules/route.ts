@@ -1,6 +1,7 @@
 // apps/web/src/app/api/bulk-schedules/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { BulkScheduleStatus } from "@prisma/client";
 import { generateSocialContent } from "@/lib/ai/openai";
 import { generateTopicVariations, analyzeRecentPosts } from "@/lib/ai/topic-variations";
 
@@ -44,9 +45,6 @@ interface MediaItem {
 
 /**
  * Distributes media across posts with smart randomization
- * - Avoids using same media in consecutive posts
- * - Prioritizes user-selected media
- * - Falls back to library media if needed
  */
 function distributeMedia(
   postsCount: number,
@@ -60,18 +58,14 @@ function distributeMedia(
 ): Array<MediaItem[]> {
   const { mediaPerPost, allowReuse, preferImages } = options;
   
-  // Combine and prioritize media
   let availableMedia = [...userSelectedMedia];
   
-  // Add library media if we need more
   if (allowReuse || availableMedia.length < postsCount * mediaPerPost) {
-    // Filter library to exclude already selected
     const selectedIds = new Set(userSelectedMedia.map(m => m.id));
     const additionalMedia = libraryMedia.filter(m => !selectedIds.has(m.id));
     availableMedia = [...availableMedia, ...additionalMedia];
   }
 
-  // Sort to prefer images if requested
   if (preferImages) {
     availableMedia.sort((a, b) => {
       const aIsImage = a.type === "IMAGE" || a.type?.startsWith("image/");
@@ -82,41 +76,34 @@ function distributeMedia(
     });
   }
 
-  // If no media available, return empty arrays
   if (availableMedia.length === 0) {
     return Array(postsCount).fill([]);
   }
 
   const distribution: Array<MediaItem[]> = [];
-  const usedRecently: string[] = []; // Track last N used to avoid repetition
-  const recentWindow = Math.min(3, Math.floor(availableMedia.length / 2)); // Don't repeat within 3 posts
+  const usedRecently: string[] = [];
+  const recentWindow = Math.min(3, Math.floor(availableMedia.length / 2));
 
   for (let i = 0; i < postsCount; i++) {
     const postMedia: MediaItem[] = [];
     
-    // Get available media not used recently
     let candidates = availableMedia.filter(m => !usedRecently.includes(m.id));
     
-    // If all media used recently, allow reuse but shuffle
     if (candidates.length === 0) {
       candidates = [...availableMedia];
-      // Shuffle to randomize
       candidates.sort(() => Math.random() - 0.5);
     }
 
-    // Select media for this post
     for (let j = 0; j < mediaPerPost && candidates.length > 0; j++) {
-      // Random selection from candidates
       const randomIndex = Math.floor(Math.random() * candidates.length);
       const selected = candidates[randomIndex];
       
       postMedia.push(selected);
-      candidates.splice(randomIndex, 1); // Remove from candidates for this post
+      candidates.splice(randomIndex, 1);
       
-      // Track recently used
       usedRecently.push(selected.id);
       if (usedRecently.length > recentWindow) {
-        usedRecently.shift(); // Remove oldest
+        usedRecently.shift();
       }
     }
 
@@ -139,7 +126,7 @@ async function fetchCompanyMedia(
 ): Promise<MediaItem[]> {
   const { limit = 50, types, excludeIds = [] } = options;
 
-  const where: any = { companyId };
+  const where: Record<string, unknown> = { companyId };
   
   if (types && types.length > 0) {
     where.type = { in: types };
@@ -178,7 +165,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const companyId = searchParams.get("companyId");
 
-    const where: any = {};
+    const where: Record<string, unknown> = {};
     if (companyId) {
       where.companyId = companyId;
     }
@@ -217,11 +204,10 @@ export async function POST(request: NextRequest) {
       tone,
       includeHashtags,
       includeEmojis,
-      // NEW: Media options
-      mediaIds = [],              // User-selected media IDs
-      autoSelectMedia = true,     // Auto-select from library if no media provided
-      mediaPerPost = 1,           // Number of media items per post (1-4)
-      preferImages = true,        // Prefer images over videos/documents
+      mediaIds = [],
+      autoSelectMedia = true,
+      mediaPerPost = 1,
+      preferImages = true,
     } = body;
 
     // ═══════════════════════════════════════════════════════════════
@@ -281,7 +267,7 @@ export async function POST(request: NextRequest) {
       if (!normalizedType) continue;
 
       const record = allPlatformRecords.find((p) => {
-        const dbType = (p.type || (p as any).platform || "").toLowerCase();
+        const dbType = (p.type || "").toLowerCase();
         return dbType === normalizedType || dbType === requestedPlatform.toLowerCase();
       });
 
@@ -302,13 +288,12 @@ export async function POST(request: NextRequest) {
     // ═══════════════════════════════════════════════════════════════
     console.log(`🖼️ Preparing media for ${postsCount} posts...`);
 
-    // Fetch user-selected media
     let userSelectedMedia: MediaItem[] = [];
     if (mediaIds && mediaIds.length > 0) {
       const selectedMedia = await prisma.media.findMany({
         where: {
           id: { in: mediaIds },
-          companyId, // Ensure media belongs to this company
+          companyId,
         },
         select: {
           id: true,
@@ -326,7 +311,6 @@ export async function POST(request: NextRequest) {
       console.log(`  ✓ User selected ${userSelectedMedia.length} media items`);
     }
 
-    // Fetch library media if auto-select enabled and we need more
     let libraryMedia: MediaItem[] = [];
     if (autoSelectMedia) {
       libraryMedia = await fetchCompanyMedia(companyId, {
@@ -335,7 +319,6 @@ export async function POST(request: NextRequest) {
         types: preferImages ? ["IMAGE"] : undefined,
       });
       
-      // If preferImages but not enough images, also fetch other types
       if (preferImages && libraryMedia.length < postsCount) {
         const additionalMedia = await fetchCompanyMedia(companyId, {
           limit: postsCount,
@@ -347,7 +330,6 @@ export async function POST(request: NextRequest) {
       console.log(`  ✓ Library has ${libraryMedia.length} additional media items`);
     }
 
-    // Distribute media across posts
     const mediaDistribution = distributeMedia(
       postsCount,
       userSelectedMedia,
@@ -429,7 +411,7 @@ export async function POST(request: NextRequest) {
         postsCount,
         timesPerDay: timesPerDay || [],
         platforms: platforms || [],
-        status: "ACTIVE",
+        status: BulkScheduleStatus.ACTIVE,
       },
     });
 
@@ -485,7 +467,6 @@ export async function POST(request: NextRequest) {
       const variation = topicVariations[slot.variationIndex];
       const postMedia = mediaDistribution[i] || [];
 
-      // Find the best platform for this variation
       const targetPlatformType =
         normalizePlatform(variation.targetPlatform) ||
         matchedPlatforms[i % matchedPlatforms.length].normalizedType;
@@ -495,7 +476,6 @@ export async function POST(request: NextRequest) {
         matchedPlatforms[i % matchedPlatforms.length].record;
 
       try {
-        // Build enhanced prompt with variation context
         const enhancedTopic = `${variation.title}
 
 ANGLE: ${variation.angle}
@@ -506,7 +486,6 @@ CONTENT TYPE: ${variation.contentType}
 SUGGESTED HASHTAGS: ${variation.suggestedHashtags.join(", ")}
 ${postMedia.length > 0 ? `\nNOTE: This post will include ${postMedia.length} image(s), so reference visual content naturally if appropriate.` : ""}`;
 
-        // Generate AI content with the specific variation
         const generated = await generateSocialContent({
           companyName: company.name,
           companyDescription: company.description || undefined,
@@ -518,12 +497,10 @@ ${postMedia.length > 0 ? `\nNOTE: This post will include ${postMedia.length} ima
           includeEmojis: includeEmojis === true,
         });
 
-        // Merge AI hashtags with suggested hashtags
         const combinedHashtags = [
           ...new Set([...(generated.hashtags || []), ...variation.suggestedHashtags]),
         ].slice(0, 10);
 
-        // Create the post
         const post = await prisma.generatedPost.create({
           data: {
             companyId,
@@ -548,7 +525,6 @@ ${postMedia.length > 0 ? `\nNOTE: This post will include ${postMedia.length} ima
           },
         });
 
-        // Create PostMedia entries for this post
         if (postMedia.length > 0) {
           await prisma.postMedia.createMany({
             data: postMedia.map((media, order) => ({
@@ -570,7 +546,6 @@ ${postMedia.length > 0 ? `\nNOTE: This post will include ${postMedia.length} ima
           `  ✓ Post ${i + 1}/${scheduleSlots.length}: "${variation.title.substring(0, 40)}..." (${postMedia.length} media)`
         );
 
-        // Small delay to avoid rate limiting
         if (i < scheduleSlots.length - 1) {
           await new Promise((resolve) => setTimeout(resolve, 500));
         }
@@ -589,7 +564,7 @@ ${postMedia.length > 0 ? `\nNOTE: This post will include ${postMedia.length} ima
       where: { id: bulkSchedule.id },
       data: {
         postsCount: createdPosts.length,
-        status: createdPosts.length > 0 ? "ACTIVE" : "FAILED",
+        status: createdPosts.length > 0 ? BulkScheduleStatus.ACTIVE : BulkScheduleStatus.FAILED,
       },
     });
 
@@ -604,7 +579,6 @@ ${postMedia.length > 0 ? `\nNOTE: This post will include ${postMedia.length} ima
       );
     }
 
-    // Build summary
     const contentTypeSummary = createdPosts.reduce((acc, post) => {
       const type = post.contentType || "other";
       acc[type] = (acc[type] || 0) + 1;
