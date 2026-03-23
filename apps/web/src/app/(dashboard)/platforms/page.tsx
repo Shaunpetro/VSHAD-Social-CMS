@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, Suspense } from 'react';
 import { Plus, Loader2, RefreshCw, CheckCircle2, AlertCircle } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 import { PlatformEmpty } from '@/app/components/platforms/platform-empty';
@@ -15,7 +15,46 @@ interface Company {
   name: string;
 }
 
+// ═══════════════════════════════════════════════════════════════
+// Main Page Component (with Suspense wrapper)
+// ═══════════════════════════════════════════════════════════════
+
 export default function PlatformsPage() {
+  return (
+    <Suspense fallback={<PlatformsLoading />}>
+      <PlatformsContent />
+    </Suspense>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Loading Fallback
+// ═══════════════════════════════════════════════════════════════
+
+function PlatformsLoading() {
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Platform Connections</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Connect your social media accounts and blog platforms
+          </p>
+        </div>
+      </div>
+      <div className="flex flex-col items-center justify-center py-24">
+        <Loader2 size={24} className="animate-spin text-muted-foreground" />
+        <p className="text-sm text-muted-foreground mt-3">Loading connections...</p>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Content Component (uses useSearchParams)
+// ═══════════════════════════════════════════════════════════════
+
+function PlatformsContent() {
   const searchParams = useSearchParams();
   const [connections, setConnections] = useState<PlatformConnection[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
