@@ -5,23 +5,7 @@ import { Plus, Loader2, RefreshCw } from 'lucide-react';
 import { CompanyEmpty } from '@/app/components/companies/company-empty';
 import { CompanyList } from '@/app/components/companies/company-list';
 import { CompanyForm } from '@/app/components/companies/company-form';
-
-interface Company {
-  id: string;
-  name: string;
-  website: string;
-  industry: string | null;
-  description: string | null;
-  logo: string | null;
-  brandVoice: string;
-  keywords: string[];
-  createdAt: string;
-  _count: {
-    topics: number;
-    connections: number;
-    posts: number;
-  };
-}
+import type { Company } from '@/types/company';
 
 export default function CompaniesPage() {
   const [companies, setCompanies] = useState<Company[]>([]);
