@@ -3,6 +3,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { getFacebookPages } from '@/lib/oauth/facebook';
+import type { Prisma } from '@prisma/client';
 
 // ═══════════════════════════════════════════════════════════════
 // Types
@@ -132,9 +133,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Update the platform with the selected page
-    // Properly type the connection data for Prisma JSON field
-    const updatedConnectionData: FacebookConnectionData = {
+    // Build connection data as Prisma-compatible JSON
+    const updatedConnectionData: Prisma.InputJsonValue = {
       accessToken: selectedPage.access_token,
       userAccessToken: userToken,
       expiresAt: connectionData.expiresAt ?? null,
@@ -144,7 +144,6 @@ export async function POST(request: NextRequest) {
       pageCategory: selectedPage.category,
       connectedAt: new Date().toISOString(),
       pendingPageSelection: false,
-      // Don't include availablePages after selection
     };
 
     const updatedPlatform = await prisma.platform.update({
