@@ -4,7 +4,27 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { getFacebookPages } from '@/lib/oauth/facebook';
 
+// ═══════════════════════════════════════════════════════════════
+// Types
+// ═══════════════════════════════════════════════════════════════
+
+interface FacebookConnectionData {
+  accessToken?: string;
+  userAccessToken?: string;
+  expiresAt?: string | number | null;
+  scopes?: string[] | string | null;
+  pageId?: string;
+  pageName?: string;
+  pageCategory?: string;
+  connectedAt?: string;
+  pendingPageSelection?: boolean;
+  availablePages?: Array<{ id: string; name: string; category: string }>;
+}
+
+// ═══════════════════════════════════════════════════════════════
 // GET: Fetch available pages for a pending connection
+// ═══════════════════════════════════════════════════════════════
+
 export async function GET(request: NextRequest) {
   try {
     const connectionId = request.nextUrl.searchParams.get('connectionId');
@@ -27,7 +47,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const connectionData = platform.connectionData as Record<string, unknown> | null;
+    const connectionData = platform.connectionData as FacebookConnectionData | null;
 
     if (!connectionData?.pendingPageSelection) {
       return NextResponse.json(
@@ -36,7 +56,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const pages = (connectionData.availablePages as Array<{ id: string; name: string; category: string }>) || [];
+    const pages = connectionData.availablePages || [];
 
     return NextResponse.json({ pages });
   } catch (error) {
@@ -48,7 +68,10 @@ export async function GET(request: NextRequest) {
   }
 }
 
+// ═══════════════════════════════════════════════════════════════
 // POST: Select a page to complete the connection
+// ═══════════════════════════════════════════════════════════════
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -80,7 +103,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const connectionData = platform.connectionData as Record<string, unknown> | null;
+    const connectionData = platform.connectionData as FacebookConnectionData | null;
 
     if (!connectionData?.pendingPageSelection) {
       return NextResponse.json(
@@ -89,7 +112,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const userToken = connectionData.userAccessToken as string;
+    const userToken = connectionData.userAccessToken;
 
     if (!userToken) {
       return NextResponse.json(
@@ -110,17 +133,18 @@ export async function POST(request: NextRequest) {
     }
 
     // Update the platform with the selected page
-    const updatedConnectionData = {
+    // Properly type the connection data for Prisma JSON field
+    const updatedConnectionData: FacebookConnectionData = {
       accessToken: selectedPage.access_token,
       userAccessToken: userToken,
-      expiresAt: connectionData.expiresAt,
-      scopes: connectionData.scopes,
+      expiresAt: connectionData.expiresAt ?? null,
+      scopes: connectionData.scopes ?? null,
       pageId: selectedPage.id,
       pageName: selectedPage.name,
       pageCategory: selectedPage.category,
       connectedAt: new Date().toISOString(),
       pendingPageSelection: false,
-      availablePages: undefined, // Remove available pages after selection
+      // Don't include availablePages after selection
     };
 
     const updatedPlatform = await prisma.platform.update({
