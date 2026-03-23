@@ -1,0 +1,16 @@
+{
+    "name": "VSHAD RoboSocial",
+    "short_name": "RoboSocial",
+    "description": "AI-powered Social Media & Blog Content Creation",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#0f0f1a",
+    "theme_color": "#d4af37",
+    "icons": [
+      {
+        "src": "/favicon.ico",
+        "sizes": "64x64 32x32 24x24 16x16",
+        "type": "image/x-icon"
+      }
+    ]
+  }

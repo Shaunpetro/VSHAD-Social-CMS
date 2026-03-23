@@ -12,6 +12,12 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: "VSHAD RoboSocial",
   description: "AI-powered Social Media & Blog Content Creation",
+  icons: {
+    icon: "/favicon.ico",
+    shortcut: "/favicon.ico",
+    apple: "/favicon.ico",
+  },
+  manifest: "/manifest.json",
 };
 
 export default function RootLayout({
@@ -21,6 +27,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        <link rel="icon" href="/favicon.ico" sizes="any" />
+      </head>
       <body 
         className={`${inter.variable} font-sans antialiased`}
         suppressHydrationWarning
