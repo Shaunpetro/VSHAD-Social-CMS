@@ -29,6 +29,9 @@ interface Company {
   _count?: {
     platforms?: number;
     generatedPosts?: number;
+    topics?: number;
+    connections?: number;
+    posts?: number;
   };
   createdAt: string;
 }
