@@ -1,14 +1,16 @@
 // apps/web/src/app/api/media/upload/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { MediaType } from "@prisma/client";
 import { UTApi } from "uploadthing/server";
 
 const utapi = new UTApi();
 
-function getMediaType(mimeType: string): "IMAGE" | "VIDEO" | "DOCUMENT" {
-  if (mimeType.startsWith("image/")) return "IMAGE";
-  if (mimeType.startsWith("video/")) return "VIDEO";
-  return "DOCUMENT";
+function getMediaType(mimeType: string): MediaType {
+  if (mimeType.startsWith("image/")) return MediaType.IMAGE;
+  if (mimeType.startsWith("video/")) return MediaType.VIDEO;
+  // PDFs and documents stored as IMAGE type (Prisma enum only has IMAGE/VIDEO)
+  return MediaType.IMAGE;
 }
 
 export async function POST(request: NextRequest) {
