@@ -10,6 +10,11 @@ export interface SchedulerResult {
   published: number;
   failed: number;
   errors: Array<{ postId: string; error: string }>;
+  debug?: {
+    queryTime: string;
+    postsFound: number;
+    query: object;
+  };
 }
 
 /**
@@ -26,16 +31,42 @@ export async function processScheduledPosts(): Promise<SchedulerResult> {
   const now = new Date();
 
   console.log(`[Scheduler] Starting scheduled post processing at ${now.toISOString()}`);
+  console.log(`[Scheduler] PostStatus.SCHEDULED value: "${PostStatus.SCHEDULED}"`);
 
   try {
+    // Build the query explicitly for debugging
+    const whereClause = {
+      status: PostStatus.SCHEDULED,
+      scheduledFor: {
+        lte: now,
+      },
+    };
+
+    console.log(`[Scheduler] Query where clause:`, JSON.stringify(whereClause, null, 2));
+
+    // First, let's do a simple count to see if posts exist
+    const countAll = await prisma.generatedPost.count({
+      where: { status: PostStatus.SCHEDULED },
+    });
+    console.log(`[Scheduler] Total SCHEDULED posts (any time): ${countAll}`);
+
+    const countDue = await prisma.generatedPost.count({
+      where: whereClause,
+    });
+    console.log(`[Scheduler] SCHEDULED posts due now: ${countDue}`);
+
+    // Also try with string literal to compare
+    const countDueString = await prisma.generatedPost.count({
+      where: {
+        status: 'SCHEDULED' as PostStatus,
+        scheduledFor: { lte: now },
+      },
+    });
+    console.log(`[Scheduler] SCHEDULED (string literal) posts due now: ${countDueString}`);
+
     // Find all posts that are SCHEDULED and due (scheduledFor <= now)
     const duePosts = await prisma.generatedPost.findMany({
-      where: {
-        status: PostStatus.SCHEDULED,
-        scheduledFor: {
-          lte: now,
-        },
-      },
+      where: whereClause,
       include: {
         platform: true,
         company: true,
@@ -56,6 +87,18 @@ export async function processScheduledPosts(): Promise<SchedulerResult> {
     });
 
     console.log(`[Scheduler] Found ${duePosts.length} posts due for publishing`);
+
+    // Log each post found
+    duePosts.forEach((post, index) => {
+      console.log(`[Scheduler] Post ${index + 1}: id=${post.id}, status=${post.status}, scheduledFor=${post.scheduledFor?.toISOString()}, company=${post.company?.name}`);
+    });
+
+    // Add debug info to result
+    result.debug = {
+      queryTime: now.toISOString(),
+      postsFound: duePosts.length,
+      query: whereClause,
+    };
 
     for (const post of duePosts) {
       result.processed++;
