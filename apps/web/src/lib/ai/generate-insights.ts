@@ -45,9 +45,9 @@ export interface AnalyticsData {
     comments: number;
     shares: number;
     impressions: number;
-    topic?: string;
-    tone?: string;
-    publishedAt?: string;
+    topic: string | null;
+    tone: string | null;
+    publishedAt: string | null;
   }>;
   timing?: {
     bestDay?: { day: string; avgEngagement: number };
