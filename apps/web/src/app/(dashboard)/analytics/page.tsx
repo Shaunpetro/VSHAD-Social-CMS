@@ -17,6 +17,9 @@ import {
   ChevronDown,
   X,
   Check,
+  CloudDownload,
+  CheckCircle2,
+  AlertCircle,
 } from "lucide-react";
 import {
   BarChart,
@@ -115,6 +118,28 @@ interface TimingData {
   bestHours: { hour: number; label: string; avgEngagement: number; posts: number }[];
 }
 
+interface SyncStatus {
+  totalPublished: number;
+  syncable: number;
+  recentlySynced: number;
+  pendingSync: number;
+  neverSynced: number;
+  lastSyncedAt: string | null;
+}
+
+interface SyncResult {
+  postId: string;
+  platform: string;
+  success: boolean;
+  metrics?: {
+    likes: number;
+    comments: number;
+    shares: number;
+    impressions: number;
+  };
+  error?: string;
+}
+
 // Platform colors and config - keys are UPPERCASE to match analytics API response
 const PLATFORM_CONFIG: Record<string, { color: string; label: string }> = {
   LINKEDIN: { color: "#0A66C2", label: "LinkedIn" },
@@ -136,6 +161,23 @@ const getPlatformConfig = (type: string) => {
   return PLATFORM_CONFIG[normalized] || { color: "#6B7280", label: type || "Unknown" };
 };
 
+// Helper to format relative time
+const formatRelativeTime = (dateString: string | null): string => {
+  if (!dateString) return "Never";
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / (1000 * 60));
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+  if (diffMins < 1) return "Just now";
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return date.toLocaleDateString();
+};
+
 export default function AnalyticsPage() {
   const { companies, isLoading: companiesLoading } = useCompany();
 
@@ -155,11 +197,138 @@ export default function AnalyticsPage() {
   const [dateRange, setDateRange] = useState<"7d" | "30d" | "90d" | "all">("30d");
   const [granularity, setGranularity] = useState<"daily" | "weekly" | "monthly">("daily");
 
+  // Sync state
+  const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<{
+    success: boolean;
+    message: string;
+    synced: number;
+    failed: number;
+  } | null>(null);
+  const [showSyncDetails, setShowSyncDetails] = useState(false);
+
   // Dropdown state
   const [companyDropdownOpen, setCompanyDropdownOpen] = useState(false);
 
   // Abort controller ref for cleanup
   const abortControllerRef = useRef<AbortController | null>(null);
+
+  // Fetch sync status
+  const fetchSyncStatus = useCallback(async (companyId: string) => {
+    if (companyId === "all") {
+      setSyncStatus(null);
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/analytics/sync?companyId=${companyId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setSyncStatus(data.status || null);
+      }
+    } catch (error) {
+      console.error("Error fetching sync status:", error);
+    }
+  }, []);
+
+  // Sync analytics from platforms
+  const syncAnalytics = async (forceRefresh = false) => {
+    if (localCompanyId === "all") {
+      // Sync all companies sequentially
+      setSyncing(true);
+      setSyncResult(null);
+
+      let totalSynced = 0;
+      let totalFailed = 0;
+
+      for (const company of companies) {
+        try {
+          const res = await fetch("/api/analytics/sync", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              companyId: company.id,
+              forceRefresh,
+            }),
+          });
+
+          if (res.ok) {
+            const data = await res.json();
+            totalSynced += data.synced || 0;
+            totalFailed += data.failed || 0;
+          }
+        } catch (error) {
+          console.error(`Error syncing company ${company.id}:`, error);
+        }
+      }
+
+      setSyncResult({
+        success: totalFailed === 0,
+        message: `Synced ${totalSynced} posts across all companies`,
+        synced: totalSynced,
+        failed: totalFailed,
+      });
+
+      setSyncing(false);
+
+      // Refresh analytics data
+      if (totalSynced > 0) {
+        fetchAnalytics();
+      }
+    } else {
+      // Sync single company
+      setSyncing(true);
+      setSyncResult(null);
+
+      try {
+        const res = await fetch("/api/analytics/sync", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            companyId: localCompanyId,
+            forceRefresh,
+          }),
+        });
+
+        const data = await res.json();
+
+        if (res.ok) {
+          setSyncResult({
+            success: data.failed === 0,
+            message: data.message || `Synced ${data.synced} posts`,
+            synced: data.synced || 0,
+            failed: data.failed || 0,
+          });
+
+          // Refresh sync status and analytics
+          fetchSyncStatus(localCompanyId);
+          if (data.synced > 0) {
+            fetchAnalytics();
+          }
+        } else {
+          setSyncResult({
+            success: false,
+            message: data.error || "Sync failed",
+            synced: 0,
+            failed: 0,
+          });
+        }
+      } catch (error) {
+        setSyncResult({
+          success: false,
+          message: error instanceof Error ? error.message : "Sync failed",
+          synced: 0,
+          failed: 0,
+        });
+      } finally {
+        setSyncing(false);
+      }
+    }
+
+    // Clear sync result after 5 seconds
+    setTimeout(() => setSyncResult(null), 5000);
+  };
 
   // Fetch platforms when company changes
   useEffect(() => {
@@ -245,6 +414,15 @@ export default function AnalyticsPage() {
       }
     };
   }, [localCompanyId, companies.length]); // Use companies.length, not companies
+
+  // Fetch sync status when company changes
+  useEffect(() => {
+    if (localCompanyId !== "all") {
+      fetchSyncStatus(localCompanyId);
+    } else {
+      setSyncStatus(null);
+    }
+  }, [localCompanyId, fetchSyncStatus]);
 
   // Reset platform filter when company changes
   useEffect(() => {
@@ -445,15 +623,101 @@ export default function AnalyticsPage() {
               Track your content performance and engagement
             </p>
           </div>
-          <button
-            onClick={fetchAnalytics}
-            disabled={loading}
-            className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors disabled:opacity-50 self-start sm:self-auto"
-          >
-            <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
-            Refresh
-          </button>
+          <div className="flex items-center gap-2 self-start sm:self-auto">
+            {/* Sync Analytics Button */}
+            <button
+              onClick={() => syncAnalytics(false)}
+              disabled={syncing || loading}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
+            >
+              <CloudDownload size={16} className={syncing ? "animate-pulse" : ""} />
+              {syncing ? "Syncing..." : "Sync Analytics"}
+            </button>
+            {/* Refresh Button */}
+            <button
+              onClick={fetchAnalytics}
+              disabled={loading}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors disabled:opacity-50"
+            >
+              <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
+              Refresh
+            </button>
+          </div>
         </div>
+
+        {/* Sync Status Banner */}
+        {syncResult && (
+          <div
+            className={`flex items-center gap-3 p-3 rounded-lg border ${
+              syncResult.success
+                ? "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800"
+                : "bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800"
+            }`}
+          >
+            {syncResult.success ? (
+              <CheckCircle2 size={18} className="text-green-600 dark:text-green-400 shrink-0" />
+            ) : (
+              <AlertCircle size={18} className="text-yellow-600 dark:text-yellow-400 shrink-0" />
+            )}
+            <div className="flex-1">
+              <p
+                className={`text-sm font-medium ${
+                  syncResult.success
+                    ? "text-green-700 dark:text-green-300"
+                    : "text-yellow-700 dark:text-yellow-300"
+                }`}
+              >
+                {syncResult.message}
+              </p>
+              {syncResult.synced > 0 && (
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {syncResult.synced} synced{syncResult.failed > 0 ? `, ${syncResult.failed} failed` : ""}
+                </p>
+              )}
+            </div>
+            <button
+              onClick={() => setSyncResult(null)}
+              className="p-1 hover:bg-black/5 dark:hover:bg-white/5 rounded"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        )}
+
+        {/* Sync Status Info (when a specific company is selected) */}
+        {syncStatus && localCompanyId !== "all" && (
+          <div className="flex flex-wrap items-center gap-4 p-3 rounded-lg border border-border/60 bg-secondary/30 text-sm">
+            <div className="flex items-center gap-2">
+              <CloudDownload size={16} className="text-muted-foreground" />
+              <span className="text-muted-foreground">Sync Status:</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="font-medium">{syncStatus.syncable}</span>
+              <span className="text-muted-foreground">syncable posts</span>
+            </div>
+            {syncStatus.neverSynced > 0 && (
+              <div className="flex items-center gap-1 text-yellow-600 dark:text-yellow-400">
+                <AlertCircle size={14} />
+                <span>{syncStatus.neverSynced} never synced</span>
+              </div>
+            )}
+            {syncStatus.lastSyncedAt && (
+              <div className="flex items-center gap-1 text-muted-foreground">
+                <Clock size={14} />
+                <span>Last sync: {formatRelativeTime(syncStatus.lastSyncedAt)}</span>
+              </div>
+            )}
+            {syncStatus.pendingSync > 0 && (
+              <button
+                onClick={() => syncAnalytics(true)}
+                disabled={syncing}
+                className="text-primary hover:underline text-xs"
+              >
+                Force refresh all
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Filters Row */}
         <div className="flex flex-wrap items-center gap-3 p-4 rounded-xl border border-border/60 bg-card">
