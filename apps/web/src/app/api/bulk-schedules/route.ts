@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { BulkScheduleStatus } from "@prisma/client";
 import { generateSocialContent } from "@/lib/ai/openai";
 import { generateTopicVariations, analyzeRecentPosts } from "@/lib/ai/topic-variations";
+import { localToUTC } from "@/lib/utils/timezone";
 
 // Valid platform types that match the AI generator
 type ValidPlatform = "linkedin" | "twitter" | "facebook" | "instagram" | "wordpress";
@@ -11,6 +12,9 @@ type ValidTone = "professional" | "casual" | "friendly" | "authoritative";
 
 const VALID_PLATFORMS: ValidPlatform[] = ["linkedin", "twitter", "facebook", "instagram", "wordpress"];
 const VALID_TONES: ValidTone[] = ["professional", "casual", "friendly", "authoritative"];
+
+// Default timezone if none configured
+const DEFAULT_TIMEZONE = "Africa/Johannesburg";
 
 // Helper to normalize platform type
 function normalizePlatform(platform: string): ValidPlatform | null {
@@ -235,7 +239,7 @@ export async function POST(request: NextRequest) {
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // FETCH COMPANY & PLATFORMS
+    // FETCH COMPANY, SETTINGS & PLATFORMS
     // ═══════════════════════════════════════════════════════════════
     const company = await prisma.company.findUnique({
       where: { id: companyId },
@@ -244,6 +248,14 @@ export async function POST(request: NextRequest) {
     if (!company) {
       return NextResponse.json({ error: "Company not found" }, { status: 404 });
     }
+
+    // Fetch company's content settings for timezone
+    const contentSettings = await prisma.contentSettings.findUnique({
+      where: { companyId },
+    });
+
+    const companyTimezone = contentSettings?.timezone || DEFAULT_TIMEZONE;
+    console.log(`🕐 Using timezone: ${companyTimezone}`);
 
     const allPlatformRecords = await prisma.platform.findMany({
       where: { companyId },
@@ -416,7 +428,7 @@ export async function POST(request: NextRequest) {
     });
 
     // ═══════════════════════════════════════════════════════════════
-    // CALCULATE SCHEDULE SLOTS
+    // CALCULATE SCHEDULE SLOTS (WITH TIMEZONE CONVERSION)
     // ═══════════════════════════════════════════════════════════════
     const start = new Date(startDate);
     const end = new Date(endDate);
@@ -426,19 +438,27 @@ export async function POST(request: NextRequest) {
     const currentDate = new Date(start);
     let variationIndex = 0;
 
+    console.log(`📅 Calculating schedule slots from ${startDate} to ${endDate}`);
+    console.log(`   Times per day: ${timesPerDay.join(', ')} (${companyTimezone})`);
+
     while (currentDate <= end && scheduleSlots.length < postsCount) {
+      // Format current date as YYYY-MM-DD
+      const dateStr = currentDate.toISOString().split('T')[0];
+
       for (const time of timesPerDay) {
         if (scheduleSlots.length >= postsCount) break;
 
-        const [hours, minutes] = time.split(":").map(Number);
-        const slotDate = new Date(currentDate);
-        slotDate.setHours(hours, minutes, 0, 0);
+        // Convert local time to UTC using the company's timezone
+        const slotDateUTC = localToUTC(dateStr, time, companyTimezone);
 
-        if (slotDate > now) {
+        // Only include future times
+        if (slotDateUTC > now) {
           scheduleSlots.push({
-            date: slotDate,
+            date: slotDateUTC,
             variationIndex: variationIndex % topicVariations.length,
           });
+          
+          console.log(`   ✓ Slot ${scheduleSlots.length}: ${dateStr} ${time} ${companyTimezone} → ${slotDateUTC.toISOString()} UTC`);
           variationIndex++;
         }
       }
@@ -508,7 +528,7 @@ ${postMedia.length > 0 ? `\nNOTE: This post will include ${postMedia.length} ima
             content: generated.content,
             hashtags: combinedHashtags,
             status: "SCHEDULED",
-            scheduledFor: slot.date,
+            scheduledFor: slot.date, // Already in UTC!
             topic: variation.title,
             tone: normalizedTone,
             generatedBy: "groq-llama-3.3",
@@ -597,6 +617,7 @@ ${postMedia.length > 0 ? `\nNOTE: This post will include ${postMedia.length} ima
       requestedCount: postsCount,
       scheduledCount: createdPosts.length,
       message: `Successfully scheduled ${createdPosts.length} unique posts`,
+      timezone: companyTimezone,
       summary: {
         contentTypes: contentTypeSummary,
         media: mediaStats,
