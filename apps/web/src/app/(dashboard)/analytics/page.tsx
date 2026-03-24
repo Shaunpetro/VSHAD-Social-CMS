@@ -20,6 +20,11 @@ import {
   CloudDownload,
   CheckCircle2,
   AlertCircle,
+  Sparkles,
+  Lightbulb,
+  TrendingUp,
+  ChevronRight,
+  Zap,
 } from "lucide-react";
 import {
   BarChart,
@@ -35,10 +40,10 @@ import {
 } from "recharts";
 import { useCompany } from "@/app/contexts/company-context";
 
-// Types - Updated to match actual API response
+// Types
 interface PlatformConnection {
   id: string;
-  platform: string; // lowercase from API: "linkedin", "facebook"
+  platform: string;
   accountName: string;
   status: string;
   companyId: string;
@@ -127,20 +132,17 @@ interface SyncStatus {
   lastSyncedAt: string | null;
 }
 
-interface SyncResult {
-  postId: string;
-  platform: string;
-  success: boolean;
-  metrics?: {
-    likes: number;
-    comments: number;
-    shares: number;
-    impressions: number;
-  };
-  error?: string;
+interface AIInsights {
+  summary: string;
+  keyFindings: string[];
+  recommendations: string[];
+  platformInsights: Record<string, string>;
+  contentTips: string[];
+  timingAdvice: string;
+  generatedAt: string;
 }
 
-// Platform colors and config - keys are UPPERCASE to match analytics API response
+// Platform colors and config
 const PLATFORM_CONFIG: Record<string, { color: string; label: string }> = {
   LINKEDIN: { color: "#0A66C2", label: "LinkedIn" },
   FACEBOOK: { color: "#1877F2", label: "Facebook" },
@@ -149,19 +151,16 @@ const PLATFORM_CONFIG: Record<string, { color: string; label: string }> = {
   WORDPRESS: { color: "#21759B", label: "WordPress" },
 };
 
-// Helper to normalize platform type to uppercase
 const normalizePlatformType = (type: string | undefined): string => {
   if (!type) return "UNKNOWN";
   return type.toUpperCase();
 };
 
-// Helper to get platform config safely
 const getPlatformConfig = (type: string) => {
   const normalized = normalizePlatformType(type);
   return PLATFORM_CONFIG[normalized] || { color: "#6B7280", label: type || "Unknown" };
 };
 
-// Helper to format relative time
 const formatRelativeTime = (dateString: string | null): string => {
   if (!dateString) return "Never";
   const date = new Date(dateString);
@@ -206,7 +205,12 @@ export default function AnalyticsPage() {
     synced: number;
     failed: number;
   } | null>(null);
-  const [showSyncDetails, setShowSyncDetails] = useState(false);
+
+  // AI Insights state
+  const [aiInsights, setAiInsights] = useState<AIInsights | null>(null);
+  const [insightsLoading, setInsightsLoading] = useState(false);
+  const [insightsExpanded, setInsightsExpanded] = useState(true);
+  const [insightsError, setInsightsError] = useState<string | null>(null);
 
   // Dropdown state
   const [companyDropdownOpen, setCompanyDropdownOpen] = useState(false);
@@ -232,10 +236,40 @@ export default function AnalyticsPage() {
     }
   }, []);
 
+  // Generate AI Insights
+  const generateInsights = async () => {
+    setInsightsLoading(true);
+    setInsightsError(null);
+
+    try {
+      const res = await fetch("/api/analytics/insights", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          companyId: localCompanyId !== "all" ? localCompanyId : undefined,
+          platformType: selectedPlatformType !== "all" ? selectedPlatformType : undefined,
+          dateRange,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        setAiInsights(data.insights);
+        setInsightsExpanded(true);
+      } else {
+        setInsightsError(data.error || "Failed to generate insights");
+      }
+    } catch (error) {
+      setInsightsError(error instanceof Error ? error.message : "Failed to generate insights");
+    } finally {
+      setInsightsLoading(false);
+    }
+  };
+
   // Sync analytics from platforms
   const syncAnalytics = async (forceRefresh = false) => {
     if (localCompanyId === "all") {
-      // Sync all companies sequentially
       setSyncing(true);
       setSyncResult(null);
 
@@ -272,12 +306,10 @@ export default function AnalyticsPage() {
 
       setSyncing(false);
 
-      // Refresh analytics data
       if (totalSynced > 0) {
         fetchAnalytics();
       }
     } else {
-      // Sync single company
       setSyncing(true);
       setSyncResult(null);
 
@@ -301,7 +333,6 @@ export default function AnalyticsPage() {
             failed: data.failed || 0,
           });
 
-          // Refresh sync status and analytics
           fetchSyncStatus(localCompanyId);
           if (data.synced > 0) {
             fetchAnalytics();
@@ -326,19 +357,16 @@ export default function AnalyticsPage() {
       }
     }
 
-    // Clear sync result after 5 seconds
     setTimeout(() => setSyncResult(null), 5000);
   };
 
   // Fetch platforms when company changes
   useEffect(() => {
-    // Skip if no companies loaded yet
     if (companies.length === 0) {
       setAvailablePlatformTypes([]);
       return;
     }
 
-    // Cancel any in-flight requests
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
@@ -352,7 +380,6 @@ export default function AnalyticsPage() {
         const seenTypes = new Set<string>();
 
         if (localCompanyId === "all") {
-          // Fetch platforms for all companies in parallel
           const fetchPromises = companies.map((company) =>
             fetch(`/api/platforms?companyId=${company.id}`, { signal })
               .then((res) => (res.ok ? res.json() : []))
@@ -361,11 +388,9 @@ export default function AnalyticsPage() {
 
           const results = await Promise.all(fetchPromises);
 
-          // Collect unique platform types
           results.forEach((data) => {
             if (Array.isArray(data)) {
               data.forEach((p: PlatformConnection) => {
-                // API returns "platform" field with lowercase value
                 if (p?.platform) {
                   seenTypes.add(normalizePlatformType(p.platform));
                 }
@@ -373,7 +398,6 @@ export default function AnalyticsPage() {
             }
           });
         } else {
-          // Fetch platforms for single company
           const res = await fetch(`/api/platforms?companyId=${localCompanyId}`, { signal });
 
           if (res.ok) {
@@ -388,12 +412,10 @@ export default function AnalyticsPage() {
           }
         }
 
-        // Only update state if not aborted
         if (!signal.aborted) {
           setAvailablePlatformTypes(Array.from(seenTypes).sort());
         }
       } catch (error) {
-        // Ignore abort errors
         if ((error as Error).name !== "AbortError") {
           console.error("Error fetching platforms:", error);
           setAvailablePlatformTypes([]);
@@ -407,13 +429,12 @@ export default function AnalyticsPage() {
 
     fetchPlatforms();
 
-    // Cleanup on unmount or dependency change
     return () => {
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }
     };
-  }, [localCompanyId, companies.length]); // Use companies.length, not companies
+  }, [localCompanyId, companies.length]);
 
   // Fetch sync status when company changes
   useEffect(() => {
@@ -424,9 +445,10 @@ export default function AnalyticsPage() {
     }
   }, [localCompanyId, fetchSyncStatus]);
 
-  // Reset platform filter when company changes
+  // Reset filters and insights when company changes
   useEffect(() => {
     setSelectedPlatformType("all");
+    setAiInsights(null);
   }, [localCompanyId]);
 
   // Calculate date range
@@ -484,7 +506,6 @@ export default function AnalyticsPage() {
     setLoading(true);
 
     try {
-      // Fetch main analytics
       const analyticsRes = await fetch(`/api/analytics?${buildParams()}`);
       if (analyticsRes.ok) {
         const data = await analyticsRes.json();
@@ -497,7 +518,6 @@ export default function AnalyticsPage() {
         setTiming(null);
       }
 
-      // Fetch top posts
       const topPostsRes = await fetch(
         `/api/analytics/top-posts?${buildParams({ limit: "5", sortBy: "engagement" })}`
       );
@@ -508,7 +528,6 @@ export default function AnalyticsPage() {
         setTopPosts([]);
       }
 
-      // Fetch trends
       const trendsRes = await fetch(
         `/api/analytics/trends?${buildParams({ granularity })}`
       );
@@ -601,7 +620,7 @@ export default function AnalyticsPage() {
     );
   }
 
-  // Prepare chart data - byPlatform keys are already uppercase from analytics API
+  // Prepare chart data
   const platformChartData = Object.entries(byPlatform).map(([platform, data]) => ({
     name: getPlatformConfig(platform).label,
     engagement: data.engagement,
@@ -624,6 +643,15 @@ export default function AnalyticsPage() {
             </p>
           </div>
           <div className="flex items-center gap-2 self-start sm:self-auto">
+            {/* Generate Insights Button */}
+            <button
+              onClick={generateInsights}
+              disabled={insightsLoading || loading || !summary?.totalPosts}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm bg-gradient-to-r from-purple-500 to-pink-500 text-white hover:from-purple-600 hover:to-pink-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Sparkles size={16} className={insightsLoading ? "animate-pulse" : ""} />
+              {insightsLoading ? "Analyzing..." : "AI Insights"}
+            </button>
             {/* Sync Analytics Button */}
             <button
               onClick={() => syncAnalytics(false)}
@@ -631,7 +659,7 @@ export default function AnalyticsPage() {
               className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
             >
               <CloudDownload size={16} className={syncing ? "animate-pulse" : ""} />
-              {syncing ? "Syncing..." : "Sync Analytics"}
+              {syncing ? "Syncing..." : "Sync"}
             </button>
             {/* Refresh Button */}
             <button
@@ -640,7 +668,6 @@ export default function AnalyticsPage() {
               className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors disabled:opacity-50"
             >
               <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
-              Refresh
             </button>
           </div>
         </div>
@@ -669,11 +696,6 @@ export default function AnalyticsPage() {
               >
                 {syncResult.message}
               </p>
-              {syncResult.synced > 0 && (
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  {syncResult.synced} synced{syncResult.failed > 0 ? `, ${syncResult.failed} failed` : ""}
-                </p>
-              )}
             </div>
             <button
               onClick={() => setSyncResult(null)}
@@ -684,37 +706,25 @@ export default function AnalyticsPage() {
           </div>
         )}
 
-        {/* Sync Status Info (when a specific company is selected) */}
+        {/* Sync Status Info */}
         {syncStatus && localCompanyId !== "all" && (
           <div className="flex flex-wrap items-center gap-4 p-3 rounded-lg border border-border/60 bg-secondary/30 text-sm">
             <div className="flex items-center gap-2">
               <CloudDownload size={16} className="text-muted-foreground" />
-              <span className="text-muted-foreground">Sync Status:</span>
+              <span className="text-muted-foreground">Sync:</span>
             </div>
-            <div className="flex items-center gap-1">
-              <span className="font-medium">{syncStatus.syncable}</span>
-              <span className="text-muted-foreground">syncable posts</span>
-            </div>
+            <span>
+              <strong>{syncStatus.syncable}</strong> syncable
+            </span>
             {syncStatus.neverSynced > 0 && (
-              <div className="flex items-center gap-1 text-yellow-600 dark:text-yellow-400">
-                <AlertCircle size={14} />
-                <span>{syncStatus.neverSynced} never synced</span>
-              </div>
+              <span className="text-yellow-600 dark:text-yellow-400">
+                {syncStatus.neverSynced} pending
+              </span>
             )}
             {syncStatus.lastSyncedAt && (
-              <div className="flex items-center gap-1 text-muted-foreground">
-                <Clock size={14} />
-                <span>Last sync: {formatRelativeTime(syncStatus.lastSyncedAt)}</span>
-              </div>
-            )}
-            {syncStatus.pendingSync > 0 && (
-              <button
-                onClick={() => syncAnalytics(true)}
-                disabled={syncing}
-                className="text-primary hover:underline text-xs"
-              >
-                Force refresh all
-              </button>
+              <span className="text-muted-foreground">
+                Last: {formatRelativeTime(syncStatus.lastSyncedAt)}
+              </span>
             )}
           </div>
         )}
@@ -848,7 +858,7 @@ export default function AnalyticsPage() {
                       : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
-                  {range === "all" ? "All Time" : range}
+                  {range === "all" ? "All" : range}
                 </button>
               ))}
             </div>
@@ -903,6 +913,180 @@ export default function AnalyticsPage() {
         )}
       </div>
 
+      {/* AI Insights Panel */}
+      {(aiInsights || insightsLoading || insightsError) && (
+        <div className="rounded-xl border border-purple-200 dark:border-purple-800 bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 overflow-hidden">
+          {/* Header */}
+          <button
+            onClick={() => setInsightsExpanded(!insightsExpanded)}
+            className="w-full flex items-center justify-between p-4 hover:bg-purple-100/50 dark:hover:bg-purple-800/20 transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center">
+                <Sparkles size={20} className="text-white" />
+              </div>
+              <div className="text-left">
+                <h3 className="font-semibold text-purple-900 dark:text-purple-100">
+                  AI-Powered Insights
+                </h3>
+                {aiInsights && (
+                  <p className="text-xs text-purple-600 dark:text-purple-400">
+                    Generated {formatRelativeTime(aiInsights.generatedAt)}
+                  </p>
+                )}
+              </div>
+            </div>
+            <ChevronRight
+              size={20}
+              className={`text-purple-500 transition-transform ${
+                insightsExpanded ? "rotate-90" : ""
+              }`}
+            />
+          </button>
+
+          {/* Content */}
+          {insightsExpanded && (
+            <div className="px-4 pb-4 space-y-4">
+              {insightsLoading && (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 size={24} className="animate-spin text-purple-500" />
+                  <span className="ml-3 text-purple-600 dark:text-purple-400">
+                    Analyzing your data with AI...
+                  </span>
+                </div>
+              )}
+
+              {insightsError && (
+                <div className="flex items-center gap-3 p-4 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800">
+                  <AlertCircle size={18} className="text-red-500 shrink-0" />
+                  <p className="text-sm text-red-700 dark:text-red-300">{insightsError}</p>
+                </div>
+              )}
+
+              {aiInsights && !insightsLoading && (
+                <>
+                  {/* Summary */}
+                  <div className="p-4 bg-white/60 dark:bg-gray-800/40 rounded-lg">
+                    <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
+                      {aiInsights.summary}
+                    </p>
+                  </div>
+
+                  <div className="grid md:grid-cols-2 gap-4">
+                    {/* Key Findings */}
+                    <div className="p-4 bg-white/60 dark:bg-gray-800/40 rounded-lg">
+                      <h4 className="font-medium text-purple-900 dark:text-purple-100 flex items-center gap-2 mb-3">
+                        <Lightbulb size={16} className="text-yellow-500" />
+                        Key Findings
+                      </h4>
+                      <ul className="space-y-2">
+                        {aiInsights.keyFindings.map((finding, idx) => (
+                          <li
+                            key={idx}
+                            className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300"
+                          >
+                            <ChevronRight size={14} className="text-purple-500 shrink-0 mt-0.5" />
+                            <span>{finding}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    {/* Recommendations */}
+                    <div className="p-4 bg-white/60 dark:bg-gray-800/40 rounded-lg">
+                      <h4 className="font-medium text-purple-900 dark:text-purple-100 flex items-center gap-2 mb-3">
+                        <Zap size={16} className="text-orange-500" />
+                        Recommendations
+                      </h4>
+                      <ul className="space-y-2">
+                        {aiInsights.recommendations.map((rec, idx) => (
+                          <li
+                            key={idx}
+                            className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300"
+                          >
+                            <ChevronRight size={14} className="text-purple-500 shrink-0 mt-0.5" />
+                            <span>{rec}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+
+                  {/* Platform Insights */}
+                  {Object.keys(aiInsights.platformInsights).length > 0 && (
+                    <div className="p-4 bg-white/60 dark:bg-gray-800/40 rounded-lg">
+                      <h4 className="font-medium text-purple-900 dark:text-purple-100 flex items-center gap-2 mb-3">
+                        <TrendingUp size={16} className="text-blue-500" />
+                        Platform Insights
+                      </h4>
+                      <div className="grid sm:grid-cols-2 gap-3">
+                        {Object.entries(aiInsights.platformInsights).map(([platform, insight]) => (
+                          <div
+                            key={platform}
+                            className="flex items-start gap-2 p-2 rounded-lg bg-gray-100/50 dark:bg-gray-700/30"
+                          >
+                            <PlatformIcon type={platform} size={24} />
+                            <div>
+                              <span className="text-xs font-medium text-gray-900 dark:text-gray-100">
+                                {getPlatformConfig(platform).label}
+                              </span>
+                              <p className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">
+                                {insight}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Content Tips & Timing */}
+                  <div className="grid md:grid-cols-2 gap-4">
+                    {aiInsights.contentTips.length > 0 && (
+                      <div className="p-4 bg-white/60 dark:bg-gray-800/40 rounded-lg">
+                        <h4 className="font-medium text-purple-900 dark:text-purple-100 mb-3">
+                          💡 Content Tips
+                        </h4>
+                        <ul className="space-y-1">
+                          {aiInsights.contentTips.map((tip, idx) => (
+                            <li key={idx} className="text-sm text-gray-700 dark:text-gray-300">
+                              • {tip}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {aiInsights.timingAdvice && (
+                      <div className="p-4 bg-white/60 dark:bg-gray-800/40 rounded-lg">
+                        <h4 className="font-medium text-purple-900 dark:text-purple-100 mb-3">
+                          ⏰ Best Timing
+                        </h4>
+                        <p className="text-sm text-gray-700 dark:text-gray-300">
+                          {aiInsights.timingAdvice}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Regenerate Button */}
+                  <div className="flex justify-center pt-2">
+                    <button
+                      onClick={generateInsights}
+                      disabled={insightsLoading}
+                      className="flex items-center gap-2 px-4 py-2 text-sm text-purple-600 dark:text-purple-400 hover:bg-purple-100 dark:hover:bg-purple-800/30 rounded-lg transition-colors"
+                    >
+                      <RefreshCw size={14} />
+                      Regenerate Insights
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Loading State */}
       {loading ? (
         <div className="flex flex-col items-center justify-center py-16">
@@ -944,9 +1128,7 @@ export default function AnalyticsPage() {
                 <Target size={16} />
                 <span className="text-sm">Engagement Rate</span>
               </div>
-              <div className="text-2xl font-bold">
-                {summary?.engagementRate.toFixed(2) || 0}%
-              </div>
+              <div className="text-2xl font-bold">{summary?.engagementRate.toFixed(2) || 0}%</div>
               <div className="text-sm text-muted-foreground mt-1">Industry avg: ~2-5%</div>
             </div>
 
@@ -1066,12 +1248,7 @@ export default function AnalyticsPage() {
                   <BarChart data={platformChartData} layout="vertical">
                     <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                     <XAxis type="number" tick={{ fontSize: 11 }} />
-                    <YAxis
-                      type="category"
-                      dataKey="name"
-                      tick={{ fontSize: 11 }}
-                      width={75}
-                    />
+                    <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={75} />
                     <Tooltip
                       contentStyle={{
                         backgroundColor: "hsl(var(--card))",
@@ -1265,9 +1442,7 @@ export default function AnalyticsPage() {
                           {data.impressions.toLocaleString()}
                         </td>
                         <td className="text-right py-3 px-4">{data.likes.toLocaleString()}</td>
-                        <td className="text-right py-3 px-4">
-                          {data.comments.toLocaleString()}
-                        </td>
+                        <td className="text-right py-3 px-4">{data.comments.toLocaleString()}</td>
                         <td className="text-right py-3 px-4">{data.shares.toLocaleString()}</td>
                         <td className="text-right py-3 px-4">
                           <span
