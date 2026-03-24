@@ -1,4 +1,6 @@
 // apps/web/src/app/(dashboard)/analytics/page.tsx
+// CONTINUATION - This replaces the previous incomplete file
+
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
@@ -25,6 +27,11 @@ import {
   TrendingUp,
   ChevronRight,
   Zap,
+  Download,
+  FileSpreadsheet,
+  FileText,
+  Grid3X3,
+  PieChart as PieChartIcon,
 } from "lucide-react";
 import {
   BarChart,
@@ -40,142 +47,31 @@ import {
 } from "recharts";
 import { useCompany } from "@/app/contexts/company-context";
 
-// Types
-interface PlatformConnection {
-  id: string;
-  platform: string;
-  accountName: string;
-  status: string;
-  companyId: string;
-}
+// Local imports
+import {
+  AnalyticsSummary,
+  PlatformData,
+  TopPost,
+  TrendData,
+  TimingData,
+  SyncStatus,
+  AIInsights,
+  PlatformConnection,
+  normalizePlatformType,
+  getPlatformConfig,
+  formatRelativeTime,
+  exportToCSV,
+  exportToPDF,
+  ExportData,
+} from "./analytics-utils";
 
-interface AnalyticsSummary {
-  totalPosts: number;
-  totals: {
-    likes: number;
-    comments: number;
-    shares: number;
-    impressions: number;
-  };
-  totalEngagement: number;
-  engagementRate: number;
-  averages: {
-    likesPerPost: number;
-    commentsPerPost: number;
-    sharesPerPost: number;
-    impressionsPerPost: number;
-    engagementPerPost: number;
-  };
-}
-
-interface PlatformData {
-  [key: string]: {
-    posts: number;
-    likes: number;
-    comments: number;
-    shares: number;
-    impressions: number;
-    engagement: number;
-    engagementRate: number;
-  };
-}
-
-interface TopPost {
-  id: string;
-  title: string | null;
-  content: string;
-  metrics: {
-    likes: number;
-    comments: number;
-    shares: number;
-    impressions: number;
-    totalEngagement: number;
-    engagementRate: number;
-  };
-  publishedAt: string | null;
-  topic: string | null;
-  platform: {
-    type: string;
-    name: string;
-  };
-}
-
-interface TrendData {
-  period: string;
-  label: string;
-  posts: number;
-  likes: number;
-  comments: number;
-  shares: number;
-  impressions: number;
-  engagement: number;
-  engagementRate: number;
-}
-
-interface TimingData {
-  byDayOfWeek: {
-    day: string;
-    posts: number;
-    totalEngagement: number;
-    avgEngagement: number;
-  }[];
-  bestDay: { day: string; avgEngagement: number } | null;
-  bestHours: { hour: number; label: string; avgEngagement: number; posts: number }[];
-}
-
-interface SyncStatus {
-  totalPublished: number;
-  syncable: number;
-  recentlySynced: number;
-  pendingSync: number;
-  neverSynced: number;
-  lastSyncedAt: string | null;
-}
-
-interface AIInsights {
-  summary: string;
-  keyFindings: string[];
-  recommendations: string[];
-  platformInsights: Record<string, string>;
-  contentTips: string[];
-  timingAdvice: string;
-  generatedAt: string;
-}
-
-// Platform colors and config
-const PLATFORM_CONFIG: Record<string, { color: string; label: string }> = {
-  LINKEDIN: { color: "#0A66C2", label: "LinkedIn" },
-  FACEBOOK: { color: "#1877F2", label: "Facebook" },
-  TWITTER: { color: "#1DA1F2", label: "Twitter" },
-  INSTAGRAM: { color: "#E4405F", label: "Instagram" },
-  WORDPRESS: { color: "#21759B", label: "WordPress" },
-};
-
-const normalizePlatformType = (type: string | undefined): string => {
-  if (!type) return "UNKNOWN";
-  return type.toUpperCase();
-};
-
-const getPlatformConfig = (type: string) => {
-  const normalized = normalizePlatformType(type);
-  return PLATFORM_CONFIG[normalized] || { color: "#6B7280", label: type || "Unknown" };
-};
-
-const formatRelativeTime = (dateString: string | null): string => {
-  if (!dateString) return "Never";
-  const date = new Date(dateString);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffMins = Math.floor(diffMs / (1000 * 60));
-  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-
-  if (diffMins < 1) return "Just now";
-  if (diffMins < 60) return `${diffMins}m ago`;
-  if (diffHours < 24) return `${diffHours}h ago`;
-  if (diffDays < 7) return `${diffDays}d ago`;
-  return date.toLocaleDateString();
-};
+import {
+  PlatformIcon,
+  EngagementPieChart,
+  EngagementBreakdownPie,
+  PostingHeatmap,
+  CompactHeatmap,
+} from "./analytics-charts";
 
 export default function AnalyticsPage() {
   const { companies, isLoading: companiesLoading } = useCompany();
@@ -212,13 +108,68 @@ export default function AnalyticsPage() {
   const [insightsExpanded, setInsightsExpanded] = useState(true);
   const [insightsError, setInsightsError] = useState<string | null>(null);
 
+  // Export state
+  const [exportDropdownOpen, setExportDropdownOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
   // Dropdown state
   const [companyDropdownOpen, setCompanyDropdownOpen] = useState(false);
 
   // Abort controller ref for cleanup
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  // Fetch sync status
+  // ==================== EXPORT HANDLERS ====================
+
+  const handleExportCSV = () => {
+    if (!summary) return;
+    setExporting(true);
+    setExportDropdownOpen(false);
+
+    try {
+      const exportData: ExportData = {
+        summary,
+        byPlatform,
+        topPosts,
+        trends,
+        timing,
+        aiInsights,
+        companyName: getCompanyName(),
+        dateRange,
+      };
+      exportToCSV(exportData);
+    } catch (error) {
+      console.error("CSV export error:", error);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleExportPDF = () => {
+    if (!summary) return;
+    setExporting(true);
+    setExportDropdownOpen(false);
+
+    try {
+      const exportData: ExportData = {
+        summary,
+        byPlatform,
+        topPosts,
+        trends,
+        timing,
+        aiInsights,
+        companyName: getCompanyName(),
+        dateRange,
+      };
+      exportToPDF(exportData);
+    } catch (error) {
+      console.error("PDF export error:", error);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  // ==================== DATA FETCHING ====================
+
   const fetchSyncStatus = useCallback(async (companyId: string) => {
     if (companyId === "all") {
       setSyncStatus(null);
@@ -236,7 +187,6 @@ export default function AnalyticsPage() {
     }
   }, []);
 
-  // Generate AI Insights
   const generateInsights = async () => {
     setInsightsLoading(true);
     setInsightsError(null);
@@ -267,7 +217,6 @@ export default function AnalyticsPage() {
     }
   };
 
-  // Sync analytics from platforms
   const syncAnalytics = async (forceRefresh = false) => {
     if (localCompanyId === "all") {
       setSyncing(true);
@@ -281,10 +230,7 @@ export default function AnalyticsPage() {
           const res = await fetch("/api/analytics/sync", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              companyId: company.id,
-              forceRefresh,
-            }),
+            body: JSON.stringify({ companyId: company.id, forceRefresh }),
           });
 
           if (res.ok) {
@@ -305,10 +251,7 @@ export default function AnalyticsPage() {
       });
 
       setSyncing(false);
-
-      if (totalSynced > 0) {
-        fetchAnalytics();
-      }
+      if (totalSynced > 0) fetchAnalytics();
     } else {
       setSyncing(true);
       setSyncResult(null);
@@ -317,10 +260,7 @@ export default function AnalyticsPage() {
         const res = await fetch("/api/analytics/sync", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            companyId: localCompanyId,
-            forceRefresh,
-          }),
+          body: JSON.stringify({ companyId: localCompanyId, forceRefresh }),
         });
 
         const data = await res.json();
@@ -332,11 +272,8 @@ export default function AnalyticsPage() {
             synced: data.synced || 0,
             failed: data.failed || 0,
           });
-
           fetchSyncStatus(localCompanyId);
-          if (data.synced > 0) {
-            fetchAnalytics();
-          }
+          if (data.synced > 0) fetchAnalytics();
         } else {
           setSyncResult({
             success: false,
@@ -367,9 +304,7 @@ export default function AnalyticsPage() {
       return;
     }
 
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
+    if (abortControllerRef.current) abortControllerRef.current.abort();
     abortControllerRef.current = new AbortController();
     const signal = abortControllerRef.current.signal;
 
@@ -387,53 +322,38 @@ export default function AnalyticsPage() {
           );
 
           const results = await Promise.all(fetchPromises);
-
           results.forEach((data) => {
             if (Array.isArray(data)) {
               data.forEach((p: PlatformConnection) => {
-                if (p?.platform) {
-                  seenTypes.add(normalizePlatformType(p.platform));
-                }
+                if (p?.platform) seenTypes.add(normalizePlatformType(p.platform));
               });
             }
           });
         } else {
           const res = await fetch(`/api/platforms?companyId=${localCompanyId}`, { signal });
-
           if (res.ok) {
             const data = await res.json();
             if (Array.isArray(data)) {
               data.forEach((p: PlatformConnection) => {
-                if (p?.platform) {
-                  seenTypes.add(normalizePlatformType(p.platform));
-                }
+                if (p?.platform) seenTypes.add(normalizePlatformType(p.platform));
               });
             }
           }
         }
 
-        if (!signal.aborted) {
-          setAvailablePlatformTypes(Array.from(seenTypes).sort());
-        }
+        if (!signal.aborted) setAvailablePlatformTypes(Array.from(seenTypes).sort());
       } catch (error) {
         if ((error as Error).name !== "AbortError") {
           console.error("Error fetching platforms:", error);
           setAvailablePlatformTypes([]);
         }
       } finally {
-        if (!signal.aborted) {
-          setPlatformsLoading(false);
-        }
+        if (!signal.aborted) setPlatformsLoading(false);
       }
     };
 
     fetchPlatforms();
-
-    return () => {
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
-    };
+    return () => abortControllerRef.current?.abort();
   }, [localCompanyId, companies.length]);
 
   // Fetch sync status when company changes
@@ -466,42 +386,29 @@ export default function AnalyticsPage() {
       case "90d":
         start = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
         break;
-      case "all":
       default:
         start = "";
-        break;
     }
 
     return { start, end };
   }, [dateRange]);
 
-  // Build query params helper
   const buildParams = useCallback(
     (extra: Record<string, string> = {}) => {
       const { start, end } = getDateRange();
       const params = new URLSearchParams();
 
-      if (localCompanyId !== "all") {
-        params.set("companyId", localCompanyId);
-      }
-
-      if (selectedPlatformType !== "all") {
-        params.set("platformType", selectedPlatformType);
-      }
-
+      if (localCompanyId !== "all") params.set("companyId", localCompanyId);
+      if (selectedPlatformType !== "all") params.set("platformType", selectedPlatformType);
       if (start) params.set("startDate", start);
       if (end) params.set("endDate", end);
 
-      Object.entries(extra).forEach(([key, value]) => {
-        params.set(key, value);
-      });
-
+      Object.entries(extra).forEach(([key, value]) => params.set(key, value));
       return params.toString();
     },
     [localCompanyId, selectedPlatformType, getDateRange]
   );
 
-  // Fetch all analytics data
   const fetchAnalytics = useCallback(async () => {
     setLoading(true);
 
@@ -528,9 +435,7 @@ export default function AnalyticsPage() {
         setTopPosts([]);
       }
 
-      const trendsRes = await fetch(
-        `/api/analytics/trends?${buildParams({ granularity })}`
-      );
+      const trendsRes = await fetch(`/api/analytics/trends?${buildParams({ granularity })}`);
       if (trendsRes.ok) {
         const data = await trendsRes.json();
         setTrends(Array.isArray(data.data) ? data.data : []);
@@ -549,39 +454,18 @@ export default function AnalyticsPage() {
     }
   }, [buildParams, granularity]);
 
-  // Fetch analytics when dependencies change
   useEffect(() => {
-    if (!companiesLoading) {
-      fetchAnalytics();
-    }
+    if (!companiesLoading) fetchAnalytics();
   }, [fetchAnalytics, companiesLoading]);
 
-  // Get company name for display
   const getCompanyName = () => {
     if (localCompanyId === "all") return "All Companies";
     const company = companies.find((c) => c.id === localCompanyId);
     return company?.name || "Select Company";
   };
 
-  // Platform icon component
-  const PlatformIcon = ({ type, size = 20 }: { type: string; size?: number }) => {
-    const config = getPlatformConfig(type);
-    return (
-      <div
-        className="rounded-full flex items-center justify-center text-white font-bold"
-        style={{
-          backgroundColor: config.color,
-          width: size,
-          height: size,
-          fontSize: size * 0.4,
-        }}
-      >
-        {(type || "?").charAt(0).toUpperCase()}
-      </div>
-    );
-  };
+  // ==================== RENDER ====================
 
-  // Loading state for companies
   if (companiesLoading) {
     return (
       <div className="space-y-6">
@@ -599,7 +483,6 @@ export default function AnalyticsPage() {
     );
   }
 
-  // No companies state
   if (companies.length === 0) {
     return (
       <div className="space-y-6">
@@ -620,7 +503,6 @@ export default function AnalyticsPage() {
     );
   }
 
-  // Prepare chart data
   const platformChartData = Object.entries(byPlatform).map(([platform, data]) => ({
     name: getPlatformConfig(platform).label,
     engagement: data.engagement,
@@ -643,7 +525,45 @@ export default function AnalyticsPage() {
             </p>
           </div>
           <div className="flex items-center gap-2 self-start sm:self-auto">
-            {/* Generate Insights Button */}
+            {/* Export Dropdown */}
+            <div className="relative">
+              <button
+                onClick={() => setExportDropdownOpen(!exportDropdownOpen)}
+                disabled={!summary || loading || exporting}
+                className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm border border-border bg-background hover:bg-secondary/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Download size={16} className={exporting ? "animate-pulse" : ""} />
+                Export
+                <ChevronDown size={14} className={exportDropdownOpen ? "rotate-180" : ""} />
+              </button>
+
+              {exportDropdownOpen && (
+                <>
+                  <div
+                    className="fixed inset-0 z-10"
+                    onClick={() => setExportDropdownOpen(false)}
+                  />
+                  <div className="absolute top-full right-0 mt-1 w-40 rounded-lg border border-border bg-popover shadow-lg z-20 py-1">
+                    <button
+                      onClick={handleExportCSV}
+                      className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-secondary/50 transition-colors"
+                    >
+                      <FileSpreadsheet size={16} className="text-green-600" />
+                      Export CSV
+                    </button>
+                    <button
+                      onClick={handleExportPDF}
+                      className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-secondary/50 transition-colors"
+                    >
+                      <FileText size={16} className="text-red-600" />
+                      Export PDF
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* AI Insights Button */}
             <button
               onClick={generateInsights}
               disabled={insightsLoading || loading || !summary?.totalPosts}
@@ -652,7 +572,8 @@ export default function AnalyticsPage() {
               <Sparkles size={16} className={insightsLoading ? "animate-pulse" : ""} />
               {insightsLoading ? "Analyzing..." : "AI Insights"}
             </button>
-            {/* Sync Analytics Button */}
+
+            {/* Sync Button */}
             <button
               onClick={() => syncAnalytics(false)}
               disabled={syncing || loading}
@@ -661,6 +582,7 @@ export default function AnalyticsPage() {
               <CloudDownload size={16} className={syncing ? "animate-pulse" : ""} />
               {syncing ? "Syncing..." : "Sync"}
             </button>
+
             {/* Refresh Button */}
             <button
               onClick={fetchAnalytics}
@@ -672,7 +594,7 @@ export default function AnalyticsPage() {
           </div>
         </div>
 
-        {/* Sync Status Banner */}
+        {/* Sync Result Banner */}
         {syncResult && (
           <div
             className={`flex items-center gap-3 p-3 rounded-lg border ${
@@ -686,17 +608,15 @@ export default function AnalyticsPage() {
             ) : (
               <AlertCircle size={18} className="text-yellow-600 dark:text-yellow-400 shrink-0" />
             )}
-            <div className="flex-1">
-              <p
-                className={`text-sm font-medium ${
-                  syncResult.success
-                    ? "text-green-700 dark:text-green-300"
-                    : "text-yellow-700 dark:text-yellow-300"
-                }`}
-              >
-                {syncResult.message}
-              </p>
-            </div>
+            <p
+              className={`flex-1 text-sm font-medium ${
+                syncResult.success
+                  ? "text-green-700 dark:text-green-300"
+                  : "text-yellow-700 dark:text-yellow-300"
+              }`}
+            >
+              {syncResult.message}
+            </p>
             <button
               onClick={() => setSyncResult(null)}
               className="p-1 hover:bg-black/5 dark:hover:bg-white/5 rounded"
@@ -706,7 +626,7 @@ export default function AnalyticsPage() {
           </div>
         )}
 
-        {/* Sync Status Info */}
+        {/* Sync Status */}
         {syncStatus && localCompanyId !== "all" && (
           <div className="flex flex-wrap items-center gap-4 p-3 rounded-lg border border-border/60 bg-secondary/30 text-sm">
             <div className="flex items-center gap-2">
@@ -729,7 +649,7 @@ export default function AnalyticsPage() {
           </div>
         )}
 
-        {/* Filters Row */}
+        {/* Filters */}
         <div className="flex flex-wrap items-center gap-3 p-4 rounded-xl border border-border/60 bg-card">
           {/* Company Selector */}
           <div className="relative">
@@ -749,10 +669,7 @@ export default function AnalyticsPage() {
 
             {companyDropdownOpen && (
               <>
-                <div
-                  className="fixed inset-0 z-10"
-                  onClick={() => setCompanyDropdownOpen(false)}
-                />
+                <div className="fixed inset-0 z-10" onClick={() => setCompanyDropdownOpen(false)} />
                 <div className="absolute top-full left-0 mt-1 w-full min-w-[220px] rounded-lg border border-border bg-popover shadow-lg z-20 py-1 max-h-64 overflow-y-auto">
                   <button
                     onClick={() => {
@@ -767,13 +684,9 @@ export default function AnalyticsPage() {
                       <BarChart3 size={12} className="text-white" />
                     </div>
                     <span className="flex-1 text-left">All Companies</span>
-                    {localCompanyId === "all" && (
-                      <Check size={14} className="text-primary shrink-0" />
-                    )}
+                    {localCompanyId === "all" && <Check size={14} className="text-primary shrink-0" />}
                   </button>
-
                   <div className="h-px bg-border my-1" />
-
                   {companies.map((company) => (
                     <button
                       key={company.id}
@@ -801,10 +714,9 @@ export default function AnalyticsPage() {
 
           <div className="h-8 w-px bg-border hidden sm:block" />
 
-          {/* Platform Filter Chips */}
+          {/* Platform Filter */}
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-sm text-muted-foreground">Platform:</span>
-
             <button
               onClick={() => setSelectedPlatformType("all")}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm transition-colors ${
@@ -815,14 +727,12 @@ export default function AnalyticsPage() {
             >
               All
             </button>
-
             {platformsLoading ? (
               <Loader2 size={14} className="animate-spin text-muted-foreground" />
             ) : (
               availablePlatformTypes.map((type) => {
                 const config = getPlatformConfig(type);
                 const isSelected = selectedPlatformType === type;
-
                 return (
                   <button
                     key={type}
@@ -844,7 +754,7 @@ export default function AnalyticsPage() {
 
           <div className="h-8 w-px bg-border hidden sm:block" />
 
-          {/* Date Range Filter */}
+          {/* Date Range */}
           <div className="flex items-center gap-2">
             <span className="text-sm text-muted-foreground">Period:</span>
             <div className="flex items-center gap-1 bg-secondary/50 rounded-lg p-1">
@@ -865,11 +775,10 @@ export default function AnalyticsPage() {
           </div>
         </div>
 
-        {/* Active Filters Display */}
+        {/* Active Filters */}
         {(localCompanyId !== "all" || selectedPlatformType !== "all") && (
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-sm text-muted-foreground">Active filters:</span>
-
             {localCompanyId !== "all" && (
               <span className="flex items-center gap-1 px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-full text-xs">
                 <Building2 size={12} />
@@ -882,13 +791,10 @@ export default function AnalyticsPage() {
                 </button>
               </span>
             )}
-
             {selectedPlatformType !== "all" && (
               <span
                 className="flex items-center gap-1 px-2 py-1 rounded-full text-xs text-white"
-                style={{
-                  backgroundColor: getPlatformConfig(selectedPlatformType).color,
-                }}
+                style={{ backgroundColor: getPlatformConfig(selectedPlatformType).color }}
               >
                 {getPlatformConfig(selectedPlatformType).label}
                 <button
@@ -899,7 +805,6 @@ export default function AnalyticsPage() {
                 </button>
               </span>
             )}
-
             <button
               onClick={() => {
                 setLocalCompanyId("all");
@@ -916,7 +821,6 @@ export default function AnalyticsPage() {
       {/* AI Insights Panel */}
       {(aiInsights || insightsLoading || insightsError) && (
         <div className="rounded-xl border border-purple-200 dark:border-purple-800 bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 overflow-hidden">
-          {/* Header */}
           <button
             onClick={() => setInsightsExpanded(!insightsExpanded)}
             className="w-full flex items-center justify-between p-4 hover:bg-purple-100/50 dark:hover:bg-purple-800/20 transition-colors"
@@ -938,13 +842,10 @@ export default function AnalyticsPage() {
             </div>
             <ChevronRight
               size={20}
-              className={`text-purple-500 transition-transform ${
-                insightsExpanded ? "rotate-90" : ""
-              }`}
+              className={`text-purple-500 transition-transform ${insightsExpanded ? "rotate-90" : ""}`}
             />
           </button>
 
-          {/* Content */}
           {insightsExpanded && (
             <div className="px-4 pb-4 space-y-4">
               {insightsLoading && (
@@ -965,7 +866,6 @@ export default function AnalyticsPage() {
 
               {aiInsights && !insightsLoading && (
                 <>
-                  {/* Summary */}
                   <div className="p-4 bg-white/60 dark:bg-gray-800/40 rounded-lg">
                     <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
                       {aiInsights.summary}
@@ -973,7 +873,6 @@ export default function AnalyticsPage() {
                   </div>
 
                   <div className="grid md:grid-cols-2 gap-4">
-                    {/* Key Findings */}
                     <div className="p-4 bg-white/60 dark:bg-gray-800/40 rounded-lg">
                       <h4 className="font-medium text-purple-900 dark:text-purple-100 flex items-center gap-2 mb-3">
                         <Lightbulb size={16} className="text-yellow-500" />
@@ -992,7 +891,6 @@ export default function AnalyticsPage() {
                       </ul>
                     </div>
 
-                    {/* Recommendations */}
                     <div className="p-4 bg-white/60 dark:bg-gray-800/40 rounded-lg">
                       <h4 className="font-medium text-purple-900 dark:text-purple-100 flex items-center gap-2 mb-3">
                         <Zap size={16} className="text-orange-500" />
@@ -1012,7 +910,6 @@ export default function AnalyticsPage() {
                     </div>
                   </div>
 
-                  {/* Platform Insights */}
                   {Object.keys(aiInsights.platformInsights).length > 0 && (
                     <div className="p-4 bg-white/60 dark:bg-gray-800/40 rounded-lg">
                       <h4 className="font-medium text-purple-900 dark:text-purple-100 flex items-center gap-2 mb-3">
@@ -1040,7 +937,6 @@ export default function AnalyticsPage() {
                     </div>
                   )}
 
-                  {/* Content Tips & Timing */}
                   <div className="grid md:grid-cols-2 gap-4">
                     {aiInsights.contentTips.length > 0 && (
                       <div className="p-4 bg-white/60 dark:bg-gray-800/40 rounded-lg">
@@ -1069,7 +965,6 @@ export default function AnalyticsPage() {
                     )}
                   </div>
 
-                  {/* Regenerate Button */}
                   <div className="flex justify-center pt-2">
                     <button
                       onClick={generateInsights}
@@ -1106,7 +1001,7 @@ export default function AnalyticsPage() {
                 {summary?.totals.impressions.toLocaleString() || 0}
               </div>
               <div className="text-sm text-muted-foreground mt-1">
-                {summary?.averages.impressionsPerPost.toLocaleString() || 0} avg/post
+                {summary?.averages.impressionsPerPost.toFixed(0) || 0} avg/post
               </div>
             </div>
 
@@ -1119,7 +1014,7 @@ export default function AnalyticsPage() {
                 {summary?.totalEngagement.toLocaleString() || 0}
               </div>
               <div className="text-sm text-muted-foreground mt-1">
-                {summary?.averages.engagementPerPost.toLocaleString() || 0} avg/post
+                {summary?.averages.engagementPerPost.toFixed(1) || 0} avg/post
               </div>
             </div>
 
@@ -1142,7 +1037,7 @@ export default function AnalyticsPage() {
             </div>
           </div>
 
-          {/* Engagement Breakdown */}
+          {/* Engagement Breakdown Cards */}
           <div className="grid grid-cols-3 gap-4">
             <div className="rounded-xl border border-border/60 bg-card p-4 flex items-center gap-4">
               <div className="w-10 h-10 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center shrink-0">
@@ -1181,9 +1076,9 @@ export default function AnalyticsPage() {
             </div>
           </div>
 
-          {/* Charts Row */}
+          {/* Charts Row 1: Trends + Platform Performance */}
           <div className="grid lg:grid-cols-2 gap-6">
-            {/* Engagement Trends Chart */}
+            {/* Engagement Trends */}
             <div className="rounded-xl border border-border/60 bg-card p-4">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-semibold">Engagement Trends</h3>
@@ -1240,7 +1135,7 @@ export default function AnalyticsPage() {
               )}
             </div>
 
-            {/* Platform Performance Chart */}
+            {/* Platform Performance Bar */}
             <div className="rounded-xl border border-border/60 bg-card p-4">
               <h3 className="font-semibold mb-4">Performance by Platform</h3>
               {platformChartData.length > 0 ? (
@@ -1256,14 +1151,10 @@ export default function AnalyticsPage() {
                         borderRadius: "8px",
                         fontSize: "12px",
                       }}
-                      formatter={(value, name) => {
-                        const numValue = typeof value === "number" ? value : 0;
-                        const strName = String(name);
-                        return [
-                          numValue.toLocaleString(),
-                          strName === "engagement" ? "Engagement" : strName,
-                        ];
-                      }}
+                      formatter={(value: number, name: string) => [
+                        value.toLocaleString(),
+                        name === "engagement" ? "Engagement" : name,
+                      ]}
                     />
                     <Bar dataKey="engagement" radius={[0, 4, 4, 0]} name="Engagement">
                       {platformChartData.map((entry, index) => (
@@ -1280,8 +1171,42 @@ export default function AnalyticsPage() {
             </div>
           </div>
 
-          {/* Best Times & Top Posts Row */}
+          {/* Charts Row 2: Pie Charts */}
           <div className="grid lg:grid-cols-2 gap-6">
+            {/* Platform Engagement Pie */}
+            <div className="rounded-xl border border-border/60 bg-card p-4">
+              <h3 className="font-semibold mb-4 flex items-center gap-2">
+                <PieChartIcon size={18} />
+                Engagement by Platform
+              </h3>
+              <EngagementPieChart byPlatform={byPlatform} />
+            </div>
+
+            {/* Engagement Type Breakdown Pie */}
+            <div className="rounded-xl border border-border/60 bg-card p-4">
+              <h3 className="font-semibold mb-4 flex items-center gap-2">
+                <PieChartIcon size={18} />
+                Engagement Breakdown
+              </h3>
+              <EngagementBreakdownPie
+                likes={summary?.totals.likes || 0}
+                comments={summary?.totals.comments || 0}
+                shares={summary?.totals.shares || 0}
+              />
+            </div>
+          </div>
+
+          {/* Charts Row 3: Heatmap + Best Times */}
+          <div className="grid lg:grid-cols-2 gap-6">
+            {/* Posting Heatmap */}
+            <div className="rounded-xl border border-border/60 bg-card p-4">
+              <h3 className="font-semibold mb-4 flex items-center gap-2">
+                <Grid3X3 size={18} />
+                Posting Heatmap
+              </h3>
+              <PostingHeatmap timing={timing} />
+            </div>
+
             {/* Best Posting Times */}
             <div className="rounded-xl border border-border/60 bg-card p-4">
               <h3 className="font-semibold mb-4 flex items-center gap-2">
@@ -1303,7 +1228,7 @@ export default function AnalyticsPage() {
               {timing?.bestHours && timing.bestHours.length > 0 && (
                 <div className="space-y-2 mb-4">
                   <div className="text-sm text-muted-foreground">Top performing hours:</div>
-                  {timing.bestHours.map((hour, idx) => (
+                  {timing.bestHours.slice(0, 3).map((hour, idx) => (
                     <div
                       key={hour.hour}
                       className="flex items-center justify-between p-2 bg-secondary/30 rounded-lg"
@@ -1339,10 +1264,7 @@ export default function AnalyticsPage() {
                           borderRadius: "8px",
                           fontSize: "12px",
                         }}
-                        formatter={(value) => {
-                          const numValue = typeof value === "number" ? value : 0;
-                          return [numValue.toFixed(1), "Avg Engagement"];
-                        }}
+                        formatter={(value: number) => [value.toFixed(1), "Avg Engagement"]}
                       />
                       <Bar
                         dataKey="avgEngagement"
@@ -1363,49 +1285,50 @@ export default function AnalyticsPage() {
                   </div>
                 )}
             </div>
+          </div>
 
-            {/* Top Posts */}
-            <div className="rounded-xl border border-border/60 bg-card p-4">
-              <h3 className="font-semibold mb-4 flex items-center gap-2">
-                <Award size={18} />
-                Top Performing Posts
-              </h3>
-              {topPosts.length > 0 ? (
-                <div className="space-y-3">
-                  {topPosts.map((post, idx) => (
-                    <div key={post.id} className="flex gap-3 p-3 bg-secondary/30 rounded-lg">
+          {/* Top Posts */}
+          <div className="rounded-xl border border-border/60 bg-card p-4">
+            <h3 className="font-semibold mb-4 flex items-center gap-2">
+              <Award size={18} />
+              Top Performing Posts
+            </h3>
+            {topPosts.length > 0 ? (
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {topPosts.map((post, idx) => (
+                  <div key={post.id} className="p-4 bg-secondary/30 rounded-lg">
+                    <div className="flex items-center gap-2 mb-2">
                       <span className="w-6 h-6 rounded-full bg-primary/10 text-primary text-xs flex items-center justify-center font-medium shrink-0">
                         {idx + 1}
                       </span>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <PlatformIcon type={post.platform?.type || ""} size={20} />
-                          <span className="text-xs text-muted-foreground truncate">
-                            {post.platform?.name || "Unknown Platform"}
-                          </span>
-                        </div>
-                        <p className="text-sm line-clamp-2">{post.content}</p>
-                        <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
-                          <span className="flex items-center gap-1">
-                            <Heart size={12} /> {post.metrics?.likes || 0}
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <MessageCircle size={12} /> {post.metrics?.comments || 0}
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <Share2 size={12} /> {post.metrics?.shares || 0}
-                          </span>
-                        </div>
-                      </div>
+                      <PlatformIcon type={post.platform?.type || ""} size={20} />
+                      <span className="text-xs text-muted-foreground truncate">
+                        {post.platform?.name || "Unknown Platform"}
+                      </span>
                     </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-8 text-muted-foreground">
-                  No published posts with engagement data yet
-                </div>
-              )}
-            </div>
+                    <p className="text-sm line-clamp-3 mb-3">{post.content}</p>
+                    <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                      <span className="flex items-center gap-1">
+                        <Heart size={12} className="text-red-500" />
+                        {post.metrics?.likes || 0}
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <MessageCircle size={12} className="text-blue-500" />
+                        {post.metrics?.comments || 0}
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <Share2 size={12} className="text-green-500" />
+                        {post.metrics?.shares || 0}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">
+                No published posts with engagement data yet
+              </div>
+            )}
           </div>
 
           {/* Platform Breakdown Table */}
