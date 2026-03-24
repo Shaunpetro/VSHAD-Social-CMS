@@ -1,7 +1,9 @@
 // apps/web/src/app/(dashboard)/layout.tsx
+
 import { Navbar } from "@/app/components/layout/navbar";
 import { MobileNav } from "@/app/components/layout/mobile-nav";
 import { CompanyProvider } from "@/app/contexts/company-context";
+import { SchedulerStatusModal } from "@/components/scheduler/SchedulerStatusModal";
 
 export default function DashboardLayout({
   children,
@@ -16,6 +18,7 @@ export default function DashboardLayout({
           {children}
         </main>
         <MobileNav />
+        <SchedulerStatusModal />
       </div>
     </CompanyProvider>
   );
