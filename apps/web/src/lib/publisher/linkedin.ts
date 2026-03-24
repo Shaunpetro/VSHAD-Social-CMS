@@ -38,7 +38,7 @@ export async function createLinkedInPost(options: LinkedInPostOptions): Promise<
 
   // Determine the author URN based on posting mode
   let authorUrn: string;
-  
+
   if (postingMode === 'organization' && organizationId) {
     authorUrn = `urn:li:organization:${organizationId}`;
     console.log('[LinkedIn Publisher] Posting to ORGANIZATION:', authorUrn);
@@ -130,9 +130,9 @@ async function createLinkedInPostWithImages(
 
     for (const mediaUrl of mediaUrls) {
       console.log('[LinkedIn Publisher] Processing image:', mediaUrl);
-      
+
       const uploadResult = await uploadImageToLinkedIn(accessToken, authorUrn, mediaUrl);
-      
+
       if (uploadResult.success && uploadResult.assetUrn) {
         uploadedAssets.push(uploadResult.assetUrn);
         console.log('[LinkedIn Publisher] Image uploaded, asset:', uploadResult.assetUrn);
@@ -209,7 +209,7 @@ async function uploadImageToLinkedIn(
   try {
     // Step 1: Register the upload
     const registerResult = await registerLinkedInUpload(accessToken, authorUrn);
-    
+
     if (!registerResult.success || !registerResult.asset) {
       return {
         success: false,
@@ -221,9 +221,9 @@ async function uploadImageToLinkedIn(
 
     // Step 2: Download the image from URL
     console.log('[LinkedIn Publisher] Downloading image from:', imageUrl);
-    
+
     const imageResponse = await fetch(imageUrl);
-    
+
     if (!imageResponse.ok) {
       return {
         success: false,
@@ -238,7 +238,7 @@ async function uploadImageToLinkedIn(
 
     // Step 3: Upload to LinkedIn
     console.log('[LinkedIn Publisher] Uploading to LinkedIn...');
-    
+
     const uploadResponse = await fetch(uploadUrl, {
       method: 'PUT',
       headers: {
@@ -407,7 +407,7 @@ async function handleLinkedInPostResponse(response: Response, authorUrn: string)
   // Determine post URL based on whether it's an org or personal post
   let postUrl: string;
   if (authorUrn.includes('organization')) {
-    postUrl = finalPostId 
+    postUrl = finalPostId
       ? `https://www.linkedin.com/feed/update/${finalPostId}`
       : 'https://www.linkedin.com/company/';
   } else {
@@ -464,6 +464,294 @@ export async function verifyLinkedInToken(accessToken: string): Promise<{
     return {
       valid: false,
       error: error instanceof Error ? error.message : 'Token verification failed',
+    };
+  }
+}
+
+// ============================================
+// POST INSIGHTS / ANALYTICS
+// ============================================
+
+/**
+ * Get insights/metrics for a LinkedIn post
+ * 
+ * Note: LinkedIn's API for post insights is more limited than Facebook.
+ * - For personal posts: Very limited data available via API
+ * - For organization posts: More data available with r_organization_social permission
+ * 
+ * The postId should be the full URN (e.g., "urn:li:share:123456" or "urn:li:ugcPost:123456")
+ */
+export async function getLinkedInPostInsights(
+  accessToken: string,
+  postId: string,
+  isOrganizationPost: boolean = false
+): Promise<{
+  success: boolean;
+  metrics?: {
+    impressions: number;
+    likes: number;
+    comments: number;
+    shares: number;
+    engagement: number;
+    clicks: number;
+  };
+  error?: string;
+}> {
+  console.log('[LinkedIn Insights] Fetching insights for post:', postId);
+
+  try {
+    // Ensure postId is in URN format
+    let postUrn = postId;
+    if (!postId.startsWith('urn:li:')) {
+      // Try to construct URN - could be ugcPost or share
+      postUrn = `urn:li:ugcPost:${postId}`;
+    }
+
+    // URL encode the URN for the API call
+    const encodedUrn = encodeURIComponent(postUrn);
+
+    if (isOrganizationPost) {
+      // For organization posts, use the organizationalEntityShareStatistics endpoint
+      return await getOrganizationPostInsights(accessToken, postUrn);
+    }
+
+    // For personal posts, we need to use the socialActions endpoint
+    // This gives us likes, comments, and shares counts
+    const metrics = {
+      impressions: 0,
+      likes: 0,
+      comments: 0,
+      shares: 0,
+      engagement: 0,
+      clicks: 0,
+    };
+
+    // Get likes count
+    try {
+      const likesResponse = await fetch(
+        `${LINKEDIN_API_URL}/socialActions/${encodedUrn}/likes?count=0`,
+        {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'X-Restli-Protocol-Version': '2.0.0',
+          },
+        }
+      );
+
+      if (likesResponse.ok) {
+        const likesData = await likesResponse.json() as {
+          paging?: { total?: number };
+        };
+        metrics.likes = likesData.paging?.total || 0;
+        console.log('[LinkedIn Insights] Likes:', metrics.likes);
+      }
+    } catch (e) {
+      console.warn('[LinkedIn Insights] Failed to fetch likes:', e);
+    }
+
+    // Get comments count
+    try {
+      const commentsResponse = await fetch(
+        `${LINKEDIN_API_URL}/socialActions/${encodedUrn}/comments?count=0`,
+        {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'X-Restli-Protocol-Version': '2.0.0',
+          },
+        }
+      );
+
+      if (commentsResponse.ok) {
+        const commentsData = await commentsResponse.json() as {
+          paging?: { total?: number };
+        };
+        metrics.comments = commentsData.paging?.total || 0;
+        console.log('[LinkedIn Insights] Comments:', metrics.comments);
+      }
+    } catch (e) {
+      console.warn('[LinkedIn Insights] Failed to fetch comments:', e);
+    }
+
+    // Calculate engagement (likes + comments + shares)
+    metrics.engagement = metrics.likes + metrics.comments + metrics.shares;
+
+    console.log('[LinkedIn Insights] Final metrics:', metrics);
+
+    return {
+      success: true,
+      metrics,
+    };
+  } catch (error) {
+    console.error('[LinkedIn Insights] Failed to fetch insights:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to fetch LinkedIn post insights',
+    };
+  }
+}
+
+/**
+ * Get insights for an organization/company page post
+ * Requires r_organization_social permission
+ */
+async function getOrganizationPostInsights(
+  accessToken: string,
+  postUrn: string
+): Promise<{
+  success: boolean;
+  metrics?: {
+    impressions: number;
+    likes: number;
+    comments: number;
+    shares: number;
+    engagement: number;
+    clicks: number;
+  };
+  error?: string;
+}> {
+  console.log('[LinkedIn Insights] Fetching organization post insights:', postUrn);
+
+  try {
+    const encodedUrn = encodeURIComponent(postUrn);
+
+    // Try to get share statistics
+    const statsResponse = await fetch(
+      `${LINKEDIN_API_URL}/organizationalEntityShareStatistics?q=organizationalEntity&shares=List(${encodedUrn})`,
+      {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'X-Restli-Protocol-Version': '2.0.0',
+        },
+      }
+    );
+
+    if (!statsResponse.ok) {
+      // Fall back to basic social actions
+      console.warn('[LinkedIn Insights] Share statistics not available, using social actions');
+      return getLinkedInPostInsights(accessToken, postUrn, false);
+    }
+
+    const statsData = await statsResponse.json() as {
+      elements?: Array<{
+        totalShareStatistics?: {
+          impressionCount?: number;
+          likeCount?: number;
+          commentCount?: number;
+          shareCount?: number;
+          clickCount?: number;
+          engagement?: number;
+        };
+      }>;
+    };
+
+    const stats = statsData.elements?.[0]?.totalShareStatistics;
+
+    if (!stats) {
+      console.warn('[LinkedIn Insights] No statistics in response');
+      return {
+        success: true,
+        metrics: {
+          impressions: 0,
+          likes: 0,
+          comments: 0,
+          shares: 0,
+          engagement: 0,
+          clicks: 0,
+        },
+      };
+    }
+
+    const metrics = {
+      impressions: stats.impressionCount || 0,
+      likes: stats.likeCount || 0,
+      comments: stats.commentCount || 0,
+      shares: stats.shareCount || 0,
+      clicks: stats.clickCount || 0,
+      engagement: stats.engagement || (stats.likeCount || 0) + (stats.commentCount || 0) + (stats.shareCount || 0),
+    };
+
+    console.log('[LinkedIn Insights] Organization post metrics:', metrics);
+
+    return {
+      success: true,
+      metrics,
+    };
+  } catch (error) {
+    console.error('[LinkedIn Insights] Failed to fetch organization insights:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to fetch organization post insights',
+    };
+  }
+}
+
+/**
+ * Get basic engagement summary for a LinkedIn post
+ * This is a simpler version that just gets reaction counts
+ */
+export async function getLinkedInPostEngagement(
+  accessToken: string,
+  postId: string
+): Promise<{
+  success: boolean;
+  engagement?: {
+    numLikes: number;
+    numComments: number;
+    numShares: number;
+  };
+  error?: string;
+}> {
+  try {
+    let postUrn = postId;
+    if (!postId.startsWith('urn:li:')) {
+      postUrn = `urn:li:ugcPost:${postId}`;
+    }
+
+    const encodedUrn = encodeURIComponent(postUrn);
+
+    // Get the post to see its social summary
+    const response = await fetch(
+      `${LINKEDIN_API_URL}/ugcPosts/${encodedUrn}`,
+      {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'X-Restli-Protocol-Version': '2.0.0',
+        },
+      }
+    );
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      return {
+        success: false,
+        error: (errorData as { message?: string }).message || `Failed to fetch post: ${response.status}`,
+      };
+    }
+
+    const postData = await response.json() as {
+      socialDetail?: {
+        totalSocialActivityCounts?: {
+          numLikes?: number;
+          numComments?: number;
+          numShares?: number;
+        };
+      };
+    };
+
+    const counts = postData.socialDetail?.totalSocialActivityCounts;
+
+    return {
+      success: true,
+      engagement: {
+        numLikes: counts?.numLikes || 0,
+        numComments: counts?.numComments || 0,
+        numShares: counts?.numShares || 0,
+      },
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to fetch engagement',
     };
   }
 }
