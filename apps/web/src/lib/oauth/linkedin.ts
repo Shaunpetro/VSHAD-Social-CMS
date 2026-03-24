@@ -8,11 +8,31 @@ const LINKEDIN_API_URL = 'https://api.linkedin.com/v2';
 // Added w_organization_social for company page posting
 export const LINKEDIN_SCOPES = 'openid profile email w_member_social w_organization_social r_organization_social';
 
+/**
+ * Get normalized app URL (no trailing slash)
+ * Hardcoded production fallback to avoid env var issues
+ */
+function getAppUrl(): string {
+  const envUrl = process.env.NEXT_PUBLIC_APP_URL;
+  const productionUrl = 'https://atgihubrobosocial.vercel.app';
+  
+  let baseUrl = envUrl || productionUrl;
+  
+  // Remove trailing slash if present
+  if (baseUrl.endsWith('/')) {
+    baseUrl = baseUrl.slice(0, -1);
+  }
+  
+  return baseUrl;
+}
+
 export function getLinkedInRedirectUri(): string {
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+  const appUrl = getAppUrl();
+  const redirectUri = `${appUrl}/api/auth/linkedin/callback`;
   console.log('[LinkedIn OAuth] NEXT_PUBLIC_APP_URL:', process.env.NEXT_PUBLIC_APP_URL);
-  console.log('[LinkedIn OAuth] Using redirect URI:', `${appUrl}/api/auth/linkedin/callback`);
-  return `${appUrl}/api/auth/linkedin/callback`;
+  console.log('[LinkedIn OAuth] Normalized App URL:', appUrl);
+  console.log('[LinkedIn OAuth] Using redirect URI:', redirectUri);
+  return redirectUri;
 }
 
 export function encodeOAuthState(data: Record<string, string>): string {
@@ -127,7 +147,7 @@ export async function getLinkedInOrganizations(accessToken: string): Promise<Lin
     if (!aclRes.ok) {
       // User might not have any organizations or permission
       console.log('[LinkedIn OAuth] No organizations found or no permission:', aclRes.status);
-      
+
       // Try alternative endpoint for content admin role
       return await getLinkedInOrganizationsAlternative(accessToken);
     }
@@ -158,7 +178,7 @@ export async function getLinkedInOrganizations(accessToken: string): Promise<Lin
       const orgDetails = element['organization~'];
       if (orgDetails) {
         const logoUrl = orgDetails['logoV2']?.['original~']?.elements?.[0]?.identifiers?.[0]?.identifier;
-        
+
         organizations.push({
           id: String(orgDetails.id || element.organization?.split(':').pop() || ''),
           name: orgDetails.localizedName || 'Unknown Organization',
@@ -218,7 +238,7 @@ async function getLinkedInOrganizationsAlternative(accessToken: string): Promise
 
     // Fetch organization details
     const organizations: LinkedInOrganization[] = [];
-    
+
     for (const orgId of orgIds) {
       try {
         const orgRes = await fetch(
