@@ -66,6 +66,18 @@ export const EngagementPieChart = ({ byPlatform }: EngagementPieChartProps) => {
     );
   }
 
+  // Custom label renderer with proper type handling
+  const renderLabel = ({
+    name,
+    percent,
+  }: {
+    name?: string;
+    percent?: number;
+  }) => {
+    if (percent === undefined) return "";
+    return `${name || ""} ${(percent * 100).toFixed(0)}%`;
+  };
+
   return (
     <ResponsiveContainer width="100%" height={280}>
       <PieChart>
@@ -77,7 +89,7 @@ export const EngagementPieChart = ({ byPlatform }: EngagementPieChartProps) => {
           outerRadius={100}
           paddingAngle={2}
           dataKey="value"
-          label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+          label={renderLabel}
           labelLine={{ stroke: "#6b7280", strokeWidth: 1 }}
         >
           {pieData.map((entry, index) => (
@@ -91,7 +103,10 @@ export const EngagementPieChart = ({ byPlatform }: EngagementPieChartProps) => {
             borderRadius: "8px",
             fontSize: "12px",
           }}
-          formatter={(value: number) => [value.toLocaleString(), "Engagement"]}
+          formatter={(value) => {
+            const numValue = typeof value === "number" ? value : 0;
+            return [numValue.toLocaleString(), "Engagement"];
+          }}
         />
         <Legend
           verticalAlign="bottom"
@@ -111,7 +126,11 @@ interface EngagementBreakdownPieProps {
   shares: number;
 }
 
-export const EngagementBreakdownPie = ({ likes, comments, shares }: EngagementBreakdownPieProps) => {
+export const EngagementBreakdownPie = ({
+  likes,
+  comments,
+  shares,
+}: EngagementBreakdownPieProps) => {
   const pieData = [
     { name: "Likes", value: likes, fill: "#ef4444" },
     { name: "Comments", value: comments, fill: "#3b82f6" },
@@ -151,10 +170,13 @@ export const EngagementBreakdownPie = ({ likes, comments, shares }: EngagementBr
             borderRadius: "8px",
             fontSize: "12px",
           }}
-          formatter={(value: number, name: string) => [
-            `${value.toLocaleString()} (${((value / total) * 100).toFixed(1)}%)`,
-            name,
-          ]}
+          formatter={(value, name) => {
+            const numValue = typeof value === "number" ? value : 0;
+            return [
+              `${numValue.toLocaleString()} (${((numValue / total) * 100).toFixed(1)}%)`,
+              name,
+            ];
+          }}
         />
         <Legend
           verticalAlign="bottom"
@@ -175,7 +197,8 @@ interface PostingHeatmapProps {
 export const PostingHeatmap = ({ timing }: PostingHeatmapProps) => {
   // Generate heatmap data
   const generateHeatmapData = () => {
-    const heatmapData: { day: string; hour: number; avgEngagement: number }[] = [];
+    const heatmapData: { day: string; hour: number; avgEngagement: number }[] =
+      [];
 
     // If API provides heatmap data, use it
     if (timing?.heatmap && timing.heatmap.length > 0) {
@@ -216,7 +239,8 @@ export const PostingHeatmap = ({ timing }: PostingHeatmapProps) => {
   const maxValue = Math.max(...heatmapData.map((d) => d.avgEngagement), 1);
 
   // Check if we have meaningful data
-  const hasData = heatmapData.length > 0 && heatmapData.some((d) => d.avgEngagement > 0);
+  const hasData =
+    heatmapData.length > 0 && heatmapData.some((d) => d.avgEngagement > 0);
 
   if (!hasData) {
     return (
@@ -227,7 +251,8 @@ export const PostingHeatmap = ({ timing }: PostingHeatmapProps) => {
   }
 
   // Group by day for rendering
-  const dataByDay: Record<string, { hour: number; avgEngagement: number }[]> = {};
+  const dataByDay: Record<string, { hour: number; avgEngagement: number }[]> =
+    {};
   DAYS_ORDER.forEach((day) => {
     dataByDay[day] = heatmapData
       .filter((d) => d.day === day)
@@ -260,22 +285,16 @@ export const PostingHeatmap = ({ timing }: PostingHeatmapProps) => {
               {day.slice(0, 3)}
             </div>
             <div className="flex-1 flex gap-0.5">
-              {dataByDay[day]?.map((cell) => {
-                // Only show cells for display hours or interpolate
-                const showCell = true; // Show all for smoother appearance
-                if (!showCell) return null;
-
-                return (
-                  <div
-                    key={cell.hour}
-                    className="flex-1 h-6 rounded-sm transition-colors hover:ring-1 hover:ring-primary cursor-default"
-                    style={{
-                      backgroundColor: getHeatmapColor(cell.avgEngagement, maxValue),
-                    }}
-                    title={`${day} ${formatHour(cell.hour)}: ${cell.avgEngagement.toFixed(1)} avg engagement`}
-                  />
-                );
-              })}
+              {dataByDay[day]?.map((cell) => (
+                <div
+                  key={cell.hour}
+                  className="flex-1 h-6 rounded-sm transition-colors hover:ring-1 hover:ring-primary cursor-default"
+                  style={{
+                    backgroundColor: getHeatmapColor(cell.avgEngagement, maxValue),
+                  }}
+                  title={`${day} ${formatHour(cell.hour)}: ${cell.avgEngagement.toFixed(1)} avg engagement`}
+                />
+              ))}
             </div>
           </div>
         ))}

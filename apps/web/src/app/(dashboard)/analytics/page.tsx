@@ -1151,10 +1151,14 @@ export default function AnalyticsPage() {
                         borderRadius: "8px",
                         fontSize: "12px",
                       }}
-                      formatter={(value: number, name: string) => [
-                        value.toLocaleString(),
-                        name === "engagement" ? "Engagement" : name,
-                      ]}
+                      formatter={(value, name) => {
+                        const numValue = typeof value === "number" ? value : 0;
+                        const strName = String(name);
+                        return [
+                          numValue.toLocaleString(),
+                          strName === "engagement" ? "Engagement" : strName,
+                        ];
+                      }}
                     />
                     <Bar dataKey="engagement" radius={[0, 4, 4, 0]} name="Engagement">
                       {platformChartData.map((entry, index) => (
@@ -1264,7 +1268,10 @@ export default function AnalyticsPage() {
                           borderRadius: "8px",
                           fontSize: "12px",
                         }}
-                        formatter={(value: number) => [value.toFixed(1), "Avg Engagement"]}
+                        formatter={(value) => {
+                          const numValue = typeof value === "number" ? value : 0;
+                          return [numValue.toFixed(1), "Avg Engagement"];
+                        }}
                       />
                       <Bar
                         dataKey="avgEngagement"
