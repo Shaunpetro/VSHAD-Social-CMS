@@ -176,18 +176,23 @@ export async function processScheduledPosts(): Promise<SchedulerResult> {
         }
 
         if (publishResult.success) {
-          // Mark as PUBLISHED
+          // Mark as PUBLISHED and save external post ID/URL for analytics sync
           await prisma.generatedPost.update({
             where: { id: post.id },
             data: {
               status: PostStatus.PUBLISHED,
               publishedAt: new Date(),
+              // Save external post tracking data for analytics sync
+              externalPostId: publishResult.postId || null,
+              externalPostUrl: publishResult.postUrl || null,
             },
           });
 
           console.log(`[Scheduler] ✅ Successfully published post ${post.id}`, {
             postId: publishResult.postId,
             postUrl: publishResult.postUrl,
+            externalPostId: publishResult.postId,
+            externalPostUrl: publishResult.postUrl,
           });
           result.published++;
         } else {
@@ -326,6 +331,58 @@ export async function cancelScheduledPost(postId: string): Promise<boolean> {
     return true;
   } catch (error) {
     console.error(`[Scheduler] Failed to cancel scheduled post ${postId}:`, error);
+    return false;
+  }
+}
+
+/**
+ * Get published posts that have external IDs (for analytics sync)
+ */
+export async function getPublishedPostsWithExternalIds(companyId: string, limit = 50) {
+  return prisma.generatedPost.findMany({
+    where: {
+      companyId,
+      status: PostStatus.PUBLISHED,
+      externalPostId: {
+        not: null,
+      },
+    },
+    include: {
+      platform: true,
+    },
+    orderBy: {
+      publishedAt: 'desc',
+    },
+    take: limit,
+  });
+}
+
+/**
+ * Update analytics for a published post
+ */
+export async function updatePostAnalytics(
+  postId: string,
+  analytics: {
+    likes?: number;
+    comments?: number;
+    shares?: number;
+    impressions?: number;
+  }
+): Promise<boolean> {
+  try {
+    await prisma.generatedPost.update({
+      where: { id: postId },
+      data: {
+        likes: analytics.likes ?? 0,
+        comments: analytics.comments ?? 0,
+        shares: analytics.shares ?? 0,
+        impressions: analytics.impressions ?? 0,
+        lastSyncedAt: new Date(),
+      },
+    });
+    return true;
+  } catch (error) {
+    console.error(`[Scheduler] Failed to update analytics for post ${postId}:`, error);
     return false;
   }
 }

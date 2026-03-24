@@ -1,3 +1,5 @@
+// prisma/schema.prisma
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -170,6 +172,11 @@ model GeneratedPost {
   tone        String?
   iteration   Int     @default(1)
   
+  // External post tracking (for analytics sync)
+  externalPostId  String?   // Facebook or LinkedIn post ID
+  externalPostUrl String?   // Direct URL to the post
+  lastSyncedAt    DateTime? // When analytics were last fetched
+  
   // Analytics (populated after publishing)
   likes       Int @default(0)
   comments    Int @default(0)
@@ -187,6 +194,7 @@ model GeneratedPost {
   @@index([platformId, scheduledFor])
   @@index([status, scheduledFor])
   @@index([bulkScheduleId])
+  @@index([externalPostId])
 }
 
 // Junction table for Post-Media many-to-many
