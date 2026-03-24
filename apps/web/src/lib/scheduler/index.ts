@@ -68,9 +68,10 @@ export async function processScheduledPosts(): Promise<SchedulerResult> {
         });
 
         console.log(`[Scheduler] Publishing post ${post.id} to ${post.platform.type}`);
+        console.log(`[Scheduler] Post has ${post.postMedia?.length || 0} media attachments`);
 
         // Get media URLs
-        const mediaUrls = post.postMedia.map((pm) => pm.media.url);
+        const mediaUrls = post.postMedia?.map((pm) => pm.media.url) || [];
 
         // Check if platform is connected
         if (!post.platform.isConnected || !post.platform.connectionData) {
@@ -86,16 +87,20 @@ export async function processScheduledPosts(): Promise<SchedulerResult> {
           case PlatformType.LINKEDIN:
             // Verify we have required LinkedIn data
             const linkedinSub = connectionData.linkedinSub as string | undefined;
-            const accessToken = connectionData.accessToken as string | undefined;
+            const linkedinAccessToken = connectionData.accessToken as string | undefined;
 
-            if (!linkedinSub || !accessToken) {
+            if (!linkedinSub || !linkedinAccessToken) {
               throw new Error('LinkedIn connection data missing. Please reconnect.');
             }
+
+            console.log(`[Scheduler] LinkedIn: Publishing to ${connectionData.postingMode || 'personal'} profile`);
+            console.log(`[Scheduler] LinkedIn: Author ID: ${linkedinSub}`);
+            console.log(`[Scheduler] LinkedIn: Media URLs: ${mediaUrls.length > 0 ? mediaUrls.join(', ') : 'none'}`);
 
             publishResult = await createLinkedInPost({
               content: post.content,
               mediaUrls: mediaUrls.length > 0 ? mediaUrls : undefined,
-              accessToken: accessToken,
+              accessToken: linkedinAccessToken,
               authorId: linkedinSub,
               postingMode: (connectionData.postingMode as 'personal' | 'organization') || 'personal',
               organizationId: connectionData.organizationId as string | null | undefined,
@@ -104,12 +109,16 @@ export async function processScheduledPosts(): Promise<SchedulerResult> {
 
           case PlatformType.FACEBOOK:
             // Verify we have required Facebook data
-            const pageAccessToken = connectionData.pageAccessToken as string | undefined;
+            // Note: Token might be stored as 'accessToken' or 'pageAccessToken'
+            const pageAccessToken = (connectionData.pageAccessToken || connectionData.accessToken) as string | undefined;
             const pageId = connectionData.pageId as string | undefined;
 
             if (!pageAccessToken || !pageId) {
               throw new Error('Facebook connection data missing. Please reconnect.');
             }
+
+            console.log(`[Scheduler] Facebook: Publishing to page ${pageId}`);
+            console.log(`[Scheduler] Facebook: Media URLs: ${mediaUrls.length > 0 ? mediaUrls.join(', ') : 'none'}`);
 
             publishResult = await createFacebookPost({
               content: post.content,
@@ -133,7 +142,7 @@ export async function processScheduledPosts(): Promise<SchedulerResult> {
             },
           });
 
-          console.log(`[Scheduler] Successfully published post ${post.id}`, {
+          console.log(`[Scheduler] ✅ Successfully published post ${post.id}`, {
             postId: publishResult.postId,
             postUrl: publishResult.postUrl,
           });
@@ -143,7 +152,7 @@ export async function processScheduledPosts(): Promise<SchedulerResult> {
         }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        console.error(`[Scheduler] Failed to publish post ${post.id}:`, errorMessage);
+        console.error(`[Scheduler] ❌ Failed to publish post ${post.id}:`, errorMessage);
 
         // Mark as FAILED
         await prisma.generatedPost.update({
