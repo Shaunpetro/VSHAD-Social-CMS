@@ -1,6 +1,6 @@
 // apps/web/src/app/api/debug/check/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import { prisma } from '@/lib/db';
 import { PlatformType } from '@prisma/client';
 
 export const dynamic = 'force-dynamic';
