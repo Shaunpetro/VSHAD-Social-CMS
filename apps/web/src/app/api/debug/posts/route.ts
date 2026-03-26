@@ -1,6 +1,6 @@
 // apps/web/src/app/api/debug/posts/route.ts
-import { prisma } from '@/lib/db';
 import { NextRequest, NextResponse } from 'next/server';
+import { prisma } from '@/lib/prisma';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,8 +8,9 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const companyId = searchParams.get('companyId');
-    const limit = parseInt(searchParams.get('limit') || '10', 10);
+    const limit = parseInt(searchParams.get('limit') || '20', 10);
 
+    // Get ALL published posts (not just those with externalPostId)
     const posts = await prisma.generatedPost.findMany({
       where: {
         ...(companyId ? { companyId } : {}),
@@ -61,6 +62,7 @@ export async function GET(request: NextRequest) {
         id: p.id,
         platform: p.platform?.type,
         externalPostId: p.externalPostId,
+        externalPostUrl: p.externalPostUrl,
         hasMetrics: (p.likes || 0) > 0 || (p.impressions || 0) > 0,
       })),
       postsWithoutExternalId: posts.filter(p => !p.externalPostId).map(p => ({
@@ -68,12 +70,16 @@ export async function GET(request: NextRequest) {
         platform: p.platform?.type,
         contentPreview: p.content?.substring(0, 50) + '...',
         publishedAt: p.publishedAt,
+        problem: 'NO externalPostId - was marked published but not actually sent to platform API',
       })),
     };
 
     return NextResponse.json({
       timestamp: new Date().toISOString(),
       summary,
+      diagnosis: summary.withExternalId === 0 
+        ? '⚠️ NO posts have externalPostId! Analytics sync cannot work. Posts were marked as published but not actually sent to LinkedIn/Facebook APIs.'
+        : `✅ ${summary.withExternalId} posts have externalPostId and can be synced.`,
       analysis,
       posts,
     });
