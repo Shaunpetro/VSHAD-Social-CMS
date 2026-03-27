@@ -6,7 +6,7 @@ const LINKEDIN_PROFILE_URL = 'https://api.linkedin.com/v2/userinfo';
 const LINKEDIN_API_URL = 'https://api.linkedin.com/v2';
 
 // Added w_organization_social for company page posting
-export const LINKEDIN_SCOPES = 'openid profile email w_member_social';
+export const LINKEDIN_SCOPES = 'openid profile email w_member_social r_member_social';
 
 /**
  * Get normalized app URL (no trailing slash)

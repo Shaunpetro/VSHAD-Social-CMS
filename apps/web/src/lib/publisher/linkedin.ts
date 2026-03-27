@@ -1,4 +1,4 @@
-// apps/web/src/lib/publisher/linkedin.ts
+﻿// apps/web/src/lib/publisher/linkedin.ts
 
 const LINKEDIN_API_URL = 'https://api.linkedin.com/v2';
 
@@ -199,7 +199,7 @@ async function createLinkedInPostWithImages(
 
 /**
  * Upload an image to LinkedIn
- * 3-step process: register → download → upload
+ * 3-step process: register â†’ download â†’ upload
  */
 async function uploadImageToLinkedIn(
   accessToken: string,
@@ -538,6 +538,13 @@ export async function getLinkedInPostInsights(
         }
       );
 
+      if (likesResponse.status === 403) {
+        console.error('[LinkedIn Insights] 403 ACCESS_DENIED for likes - missing r_member_social scope');
+        return {
+          success: false,
+          error: 'LinkedIn token lacks read permission (r_member_social). Please reconnect LinkedIn from the Platforms page.',
+        };
+      }
       if (likesResponse.ok) {
         const likesData = await likesResponse.json() as {
           paging?: { total?: number };

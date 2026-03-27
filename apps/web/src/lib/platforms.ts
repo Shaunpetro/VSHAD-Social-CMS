@@ -18,7 +18,7 @@ export const PLATFORMS: Record<string, PlatformConfig> = {
     bgColor: "bg-[#0A66C2]/10",
     borderColor: "border-[#0A66C2]/20",
     description: "Professional networking & B2B content",
-    defaultScopes: ["openid", "profile", "email", "w_member_social"],
+    defaultScopes: ["openid", "profile", "email", "w_member_social", "r_member_social"],
     accountPlaceholder: "e.g. My Company Page",
     oauthSupported: true,
   },

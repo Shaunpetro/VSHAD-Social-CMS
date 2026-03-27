@@ -1,4 +1,4 @@
-// apps/web/src/app/api/analytics/sync/route.ts
+﻿// apps/web/src/app/api/analytics/sync/route.ts
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
@@ -204,7 +204,7 @@ export async function POST(request: NextRequest) {
             },
           });
 
-          console.log(`[Analytics Sync] ✅ Updated post ${post.id}:`, metrics);
+          console.log(`[Analytics Sync] âœ… Updated post ${post.id}:`, metrics);
 
           results.push({
             postId: post.id,
@@ -216,7 +216,7 @@ export async function POST(request: NextRequest) {
         }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        console.error(`[Analytics Sync] ❌ Failed to sync post ${post.id}:`, errorMessage);
+        console.error(`[Analytics Sync] âŒ Failed to sync post ${post.id}:`, errorMessage);
 
         results.push({
           postId: post.id,
