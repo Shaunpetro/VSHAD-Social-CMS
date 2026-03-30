@@ -1,5 +1,6 @@
+// apps/web/src/app/api/posts/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { prisma } from "@/lib/db";
 
 export async function GET(request: NextRequest) {
   try {
@@ -9,7 +10,7 @@ export async function GET(request: NextRequest) {
     const startDate = searchParams.get("startDate");
     const endDate = searchParams.get("endDate");
 
-    const where: any = {};
+    const where: Record<string, unknown> = {};
 
     if (companyId) {
       where.companyId = companyId;

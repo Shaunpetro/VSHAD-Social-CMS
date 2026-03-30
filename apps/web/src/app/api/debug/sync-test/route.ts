@@ -1,6 +1,6 @@
 // apps/web/src/app/api/debug/sync-test/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import { prisma } from '@/lib/db';
 import { PostStatus, PlatformType } from '@prisma/client';
 
 export const dynamic = 'force-dynamic';
@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
 
     // Get published posts with externalPostId
     const posts = await prisma.generatedPost.findMany({
-      where: { 
+      where: {
         status: PostStatus.PUBLISHED,
         externalPostId: { not: null },
       },
@@ -62,7 +62,7 @@ export async function GET(request: NextRequest) {
       // Test FACEBOOK
       if (post.platform?.type === PlatformType.FACEBOOK) {
         const pageAccessToken = (connectionData.pageAccessToken || connectionData.accessToken) as string;
-        
+
         log(`Token exists: ${!!pageAccessToken}, Length: ${pageAccessToken?.length || 0}`);
         postResult.tokenExists = !!pageAccessToken;
 
@@ -73,10 +73,10 @@ export async function GET(request: NextRequest) {
             const basicUrl = `${FB_GRAPH_URL}/${post.externalPostId}?fields=id,message,created_time,shares,comments.summary(true),reactions.summary(true)&access_token=${pageAccessToken}`;
             const basicResponse = await fetch(basicUrl);
             const basicData = await basicResponse.json();
-            
+
             log(`Basic info status: ${basicResponse.status}`);
             log(`Basic info response: ${JSON.stringify(basicData).substring(0, 500)}`);
-            
+
             postResult.basicInfo = {
               status: basicResponse.status,
               data: basicData,
@@ -87,7 +87,7 @@ export async function GET(request: NextRequest) {
               const shares = basicData.shares?.count || 0;
               const comments = basicData.comments?.summary?.total_count || 0;
               const reactions = basicData.reactions?.summary?.total_count || 0;
-              
+
               log(`Metrics from basic: reactions=${reactions}, comments=${comments}, shares=${shares}`);
               postResult.extractedMetrics = { reactions, comments, shares };
             }
@@ -102,10 +102,10 @@ export async function GET(request: NextRequest) {
             const insightsUrl = `${FB_GRAPH_URL}/${post.externalPostId}/insights?metric=post_impressions,post_engaged_users&access_token=${pageAccessToken}`;
             const insightsResponse = await fetch(insightsUrl);
             const insightsData = await insightsResponse.json();
-            
+
             log(`Insights status: ${insightsResponse.status}`);
             log(`Insights response: ${JSON.stringify(insightsData).substring(0, 500)}`);
-            
+
             postResult.insights = {
               status: insightsResponse.status,
               data: insightsData,
@@ -121,7 +121,7 @@ export async function GET(request: NextRequest) {
       if (post.platform?.type === PlatformType.LINKEDIN) {
         const accessToken = connectionData.accessToken as string;
         const isOrgPost = connectionData.postingMode === 'organization';
-        
+
         log(`Token exists: ${!!accessToken}, Length: ${accessToken?.length || 0}`);
         log(`Is org post: ${isOrgPost}`);
         postResult.tokenExists = !!accessToken;
@@ -142,10 +142,10 @@ export async function GET(request: NextRequest) {
               },
             });
             const likesData = await likesResponse.json();
-            
+
             log(`Likes status: ${likesResponse.status}`);
             log(`Likes response: ${JSON.stringify(likesData).substring(0, 300)}`);
-            
+
             postResult.likes = {
               status: likesResponse.status,
               total: likesData.paging?.total || 0,
@@ -167,10 +167,10 @@ export async function GET(request: NextRequest) {
               },
             });
             const commentsData = await commentsResponse.json();
-            
+
             log(`Comments status: ${commentsResponse.status}`);
             log(`Comments response: ${JSON.stringify(commentsData).substring(0, 300)}`);
-            
+
             postResult.comments = {
               status: commentsResponse.status,
               total: commentsData.paging?.total || 0,
@@ -192,10 +192,10 @@ export async function GET(request: NextRequest) {
               },
             });
             const postData = await postResponse.json();
-            
+
             log(`Post fetch status: ${postResponse.status}`);
             log(`Post response: ${JSON.stringify(postData).substring(0, 300)}`);
-            
+
             postResult.postFetch = {
               status: postResponse.status,
               data: postData,
