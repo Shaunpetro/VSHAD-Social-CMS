@@ -10,7 +10,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "seed:benchmarks": "npx tsx prisma/seed-benchmarks.ts"
+    "seed:benchmarks": "npx tsx prisma/seed-benchmarks.ts",
+    "seed:benchmarks:extended": "npx tsx prisma/seed-benchmarks-extended.ts"
   },
   "dependencies": {
     "@lucia-auth/adapter-prisma": "^4.0.1",

@@ -650,7 +650,7 @@ const industryBenchmarks: IndustryBenchmarkData[] = [
   },
 
   // ============================================
-  // PROFESSIONAL SERVICES (Consulting, Accounting)
+  // PROFESSIONAL SERVICES
   // ============================================
   {
     industry: "Professional Services",
