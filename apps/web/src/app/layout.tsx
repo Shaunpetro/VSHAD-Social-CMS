@@ -1,43 +1,50 @@
-import type { Metadata } from "next";
-import { Inter } from "next/font/google";
-import "./globals.css";
-import { ThemeProvider } from "./providers";
-import { SplashScreen } from "./components/splash-screen";
+// apps/web/src/app/layout.tsx
+import type { Metadata } from "next"
+import { Inter } from "next/font/google"
+import "./globals.css"
+import { ThemeProvider } from "@/components/providers/ThemeProvider"
+import SplashScreen from "@/components/ui/SplashScreen"
 
-const inter = Inter({
+const inter = Inter({ 
   subsets: ["latin"],
-  variable: "--font-inter",
-});
+  variable: '--font-inter',
+})
 
 export const metadata: Metadata = {
   title: "VSHAD RoboSocial",
-  description: "AI-powered Social Media & Blog Content Creation",
-  icons: {
-    icon: "/favicon.ico",
-    shortcut: "/favicon.ico",
-    apple: "/favicon.ico",
-  },
-  manifest: "/manifest.json",
-};
+  description: "AI-powered social media content management",
+}
 
 export default function RootLayout({
   children,
 }: {
-  children: React.ReactNode;
+  children: React.ReactNode
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        <link rel="icon" href="/favicon.ico" sizes="any" />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                const stored = localStorage.getItem('robosocial-theme');
+                const theme = stored || 'system';
+                const resolved = theme === 'system' 
+                  ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+                  : theme;
+                document.documentElement.classList.add(resolved);
+              })();
+            `,
+          }}
+        />
       </head>
-      <body 
-        className={`${inter.variable} font-sans antialiased`}
-        suppressHydrationWarning
-      >
-        <ThemeProvider>
-          <SplashScreen>{children}</SplashScreen>
+      <body className={`${inter.variable} font-sans`}>
+        <ThemeProvider defaultTheme="system">
+          <SplashScreen>
+            {children}
+          </SplashScreen>
         </ThemeProvider>
       </body>
     </html>
-  );
+  )
 }

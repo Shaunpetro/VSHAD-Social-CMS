@@ -9,7 +9,7 @@ import {
   getFacebookPages,
 } from '@/lib/oauth/facebook';
 
-const getAppUrl = () => {
+function getAppUrl(): string {
   const envUrl = process.env.NEXT_PUBLIC_APP_URL;
   const productionUrl = 'https://atgihubrobosocial.vercel.app';
   let baseUrl = envUrl || productionUrl;
@@ -17,19 +17,42 @@ const getAppUrl = () => {
     baseUrl = baseUrl.slice(0, -1);
   }
   return baseUrl;
-};
+}
+
+/**
+ * Build redirect URL to company platforms page
+ */
+function buildRedirectUrl(appUrl: string, companyId: string | null, params: string): string {
+  if (companyId) {
+    return `${appUrl}/companies/${companyId}/platforms?${params}`;
+  }
+  return `${appUrl}/companies?error=missing_company`;
+}
 
 export async function GET(request: NextRequest) {
   const appUrl = getAppUrl();
 
+  // Extract state early to get companyId for error redirects
+  const state = request.nextUrl.searchParams.get('state');
+  let companyId: string | null = null;
+
+  if (state) {
+    try {
+      const stateData = decodeOAuthState(state);
+      companyId = stateData.companyId || null;
+    } catch {
+      // State decode failed, companyId stays null
+    }
+  }
+
   try {
     const code = request.nextUrl.searchParams.get('code');
-    const state = request.nextUrl.searchParams.get('state');
     const error = request.nextUrl.searchParams.get('error');
     const errorReason = request.nextUrl.searchParams.get('error_reason');
 
     console.log('[Facebook Callback] === CALLBACK DEBUG ===');
     console.log('[Facebook Callback] App URL:', appUrl);
+    console.log('[Facebook Callback] Company ID:', companyId);
     console.log('[Facebook Callback] Has code:', !!code);
     console.log('[Facebook Callback] Has state:', !!state);
 
@@ -37,25 +60,26 @@ export async function GET(request: NextRequest) {
       console.error('Facebook OAuth error:', error, errorReason);
       const msg = encodeURIComponent(errorReason || error);
       return NextResponse.redirect(
-        new URL(`/platforms?error=facebook_denied&message=${msg}`, appUrl)
+        new URL(buildRedirectUrl(appUrl, companyId, `error=facebook_denied&message=${msg}`))
       );
     }
 
     if (!code || !state) {
       return NextResponse.redirect(
-        new URL('/platforms?error=facebook_missing_params', appUrl)
+        new URL(buildRedirectUrl(appUrl, companyId, 'error=facebook_missing_params'))
       );
     }
 
     const stateData = decodeOAuthState(state);
-    const { companyId, redirectUri: stateRedirectUri } = stateData;
+    const { redirectUri: stateRedirectUri } = stateData;
+    companyId = stateData.companyId;
 
-    console.log('[Facebook Callback] Company ID:', companyId);
+    console.log('[Facebook Callback] Company ID from state:', companyId);
     console.log('[Facebook Callback] Redirect URI from state:', stateRedirectUri);
 
     if (!companyId) {
       return NextResponse.redirect(
-        new URL('/platforms?error=facebook_invalid_state', appUrl)
+        new URL(`${appUrl}/companies?error=facebook_invalid_state`)
       );
     }
 
@@ -66,11 +90,11 @@ export async function GET(request: NextRequest) {
 
     if (!company) {
       return NextResponse.redirect(
-        new URL('/platforms?error=company_not_found', appUrl)
+        new URL(`${appUrl}/companies?error=company_not_found`)
       );
     }
 
-    // Exchange code for tokens - pass the redirect URI from state to ensure match
+    // Exchange code for tokens
     const shortToken = await exchangeFacebookCode(code, stateRedirectUri);
     const longLived = await getLongLivedToken(shortToken.access_token);
     const pages = await getFacebookPages(longLived.access_token);
@@ -80,7 +104,7 @@ export async function GET(request: NextRequest) {
 
     if (pages.length === 0) {
       return NextResponse.redirect(
-        new URL('/platforms?error=no_facebook_pages', appUrl)
+        new URL(buildRedirectUrl(appUrl, companyId, 'error=no_facebook_pages'))
       );
     }
 
@@ -99,7 +123,6 @@ export async function GET(request: NextRequest) {
         connectedAt: new Date().toISOString(),
       };
 
-      // Check if Facebook platform already exists for this company
       const existing = await prisma.platform.findFirst({
         where: {
           type: 'FACEBOOK',
@@ -132,7 +155,7 @@ export async function GET(request: NextRequest) {
       }
 
       return NextResponse.redirect(
-        new URL('/platforms?connected=facebook', appUrl)
+        new URL(buildRedirectUrl(appUrl, companyId, 'connected=facebook'))
       );
     }
 
@@ -186,7 +209,7 @@ export async function GET(request: NextRequest) {
     }
 
     return NextResponse.redirect(
-      new URL(`/platforms?pending_facebook=${platformId}`, appUrl)
+      new URL(buildRedirectUrl(appUrl, companyId, `pending_facebook=${platformId}`))
     );
   } catch (error) {
     console.error('Facebook callback failed:', error);
@@ -194,7 +217,7 @@ export async function GET(request: NextRequest) {
       error instanceof Error ? error.message : 'Facebook connection failed'
     );
     return NextResponse.redirect(
-      new URL(`/platforms?error=facebook_callback_failed&message=${msg}`, appUrl)
+      new URL(buildRedirectUrl(appUrl, companyId, `error=facebook_callback_failed&message=${msg}`))
     );
   }
 }

@@ -12,30 +12,46 @@ import {
 
 /**
  * Get the base app URL, normalized (no trailing slash)
- * Hardcoded fallback for production to avoid env var issues
  */
 function getAppUrl(): string {
   const envUrl = process.env.NEXT_PUBLIC_APP_URL;
-
-  // Hardcoded production URL as fallback
   const productionUrl = 'https://atgihubrobosocial.vercel.app';
-
   let baseUrl = envUrl || productionUrl;
-
-  // Remove trailing slash if present
   if (baseUrl.endsWith('/')) {
     baseUrl = baseUrl.slice(0, -1);
   }
-
   return baseUrl;
+}
+
+/**
+ * Build redirect URL to company platforms page
+ */
+function buildRedirectUrl(appUrl: string, companyId: string | null, params: string): string {
+  if (companyId) {
+    return `${appUrl}/companies/${companyId}/platforms?${params}`;
+  }
+  // Fallback to companies list if no companyId
+  return `${appUrl}/companies?error=missing_company`;
 }
 
 export async function GET(request: NextRequest) {
   const appUrl = getAppUrl();
-  
+
+  // Extract state early to get companyId for error redirects
+  const state = request.nextUrl.searchParams.get('state');
+  let companyId: string | null = null;
+
+  if (state) {
+    try {
+      const stateData = decodeOAuthState(state);
+      companyId = stateData.companyId || null;
+    } catch {
+      // State decode failed, companyId stays null
+    }
+  }
+
   try {
     const code = request.nextUrl.searchParams.get('code');
-    const state = request.nextUrl.searchParams.get('state');
     const error = request.nextUrl.searchParams.get('error');
     const errorDescription = request.nextUrl.searchParams.get('error_description');
 
@@ -43,22 +59,22 @@ export async function GET(request: NextRequest) {
       console.error('LinkedIn OAuth error:', error, errorDescription);
       const msg = encodeURIComponent(errorDescription || error);
       return NextResponse.redirect(
-        new URL(`/platforms?error=linkedin_denied&message=${msg}`, appUrl)
+        new URL(buildRedirectUrl(appUrl, companyId, `error=linkedin_denied&message=${msg}`))
       );
     }
 
     if (!code || !state) {
       return NextResponse.redirect(
-        new URL('/platforms?error=linkedin_missing_params', appUrl)
+        new URL(buildRedirectUrl(appUrl, companyId, 'error=linkedin_missing_params'))
       );
     }
 
     const stateData = decodeOAuthState(state);
-    const { companyId } = stateData;
+    companyId = stateData.companyId;
 
     if (!companyId) {
       return NextResponse.redirect(
-        new URL('/platforms?error=linkedin_invalid_state', appUrl)
+        new URL(`${appUrl}/companies?error=linkedin_invalid_state`)
       );
     }
 
@@ -69,7 +85,7 @@ export async function GET(request: NextRequest) {
 
     if (!company) {
       return NextResponse.redirect(
-        new URL('/platforms?error=company_not_found', appUrl)
+        new URL(`${appUrl}/companies?error=company_not_found`)
       );
     }
 
@@ -93,7 +109,6 @@ export async function GET(request: NextRequest) {
       name: profile.name,
       picture: profile.picture || null,
       connectedAt: new Date().toISOString(),
-      // These will be set based on selection
       postingMode: 'personal' as const,
       organizationId: null as string | null,
       organizationName: null as string | null,
@@ -101,7 +116,6 @@ export async function GET(request: NextRequest) {
 
     // If user has organizations, redirect to selection page
     if (organizations.length > 0) {
-      // Convert organizations to plain JSON-compatible objects
       const orgsForStorage = organizations.map(org => ({
         id: org.id,
         name: org.name,
@@ -109,7 +123,6 @@ export async function GET(request: NextRequest) {
         logoUrl: org.logoUrl || null,
       }));
 
-      // Store pending connection data in the platform record
       const existing = await prisma.platform.findFirst({
         where: {
           type: 'LINKEDIN',
@@ -128,7 +141,7 @@ export async function GET(request: NextRequest) {
           where: { id: existing.id },
           data: {
             username: profile.name || profile.email || 'LinkedIn Account',
-            isConnected: false, // Not fully connected until selection
+            isConnected: false,
             connectionData: pendingData,
             lastSyncAt: new Date(),
           },
@@ -139,7 +152,7 @@ export async function GET(request: NextRequest) {
             type: 'LINKEDIN',
             name: 'LinkedIn',
             username: profile.name || profile.email || 'LinkedIn Account',
-            isConnected: false, // Not fully connected until selection
+            isConnected: false,
             connectionData: pendingData,
             lastSyncAt: new Date(),
             companyId,
@@ -147,10 +160,10 @@ export async function GET(request: NextRequest) {
         });
       }
 
-      // Redirect to selection page
+      // Redirect to company-specific selection page
       const orgsEncoded = encodeOrganizations(organizations);
       return NextResponse.redirect(
-        new URL(`/platforms/linkedin/select?companyId=${companyId}&orgs=${orgsEncoded}`, appUrl)
+        new URL(`${appUrl}/companies/${companyId}/platforms/linkedin/select?orgs=${orgsEncoded}`)
       );
     }
 
@@ -162,7 +175,6 @@ export async function GET(request: NextRequest) {
       postingMode: 'personal' as const,
     };
 
-    // Check if LinkedIn platform already exists for this company
     const existing = await prisma.platform.findFirst({
       where: {
         type: 'LINKEDIN',
@@ -195,7 +207,7 @@ export async function GET(request: NextRequest) {
     }
 
     return NextResponse.redirect(
-      new URL('/platforms?connected=linkedin', appUrl)
+      new URL(buildRedirectUrl(appUrl, companyId, 'connected=linkedin'))
     );
   } catch (error) {
     console.error('LinkedIn callback failed:', error);
@@ -203,7 +215,7 @@ export async function GET(request: NextRequest) {
       error instanceof Error ? error.message : 'LinkedIn connection failed'
     );
     return NextResponse.redirect(
-      new URL(`/platforms?error=linkedin_callback_failed&message=${msg}`, appUrl)
+      new URL(buildRedirectUrl(appUrl, companyId, `error=linkedin_callback_failed&message=${msg}`))
     );
   }
 }
