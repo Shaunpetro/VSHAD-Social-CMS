@@ -1,7 +1,20 @@
+// apps/web/src/app/api/intelligence/match-industry/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY
+
+// Type definition for AI match result
+interface MatchResult {
+  matchedIndustry: string;
+  confidence: string;
+  reasoning: string;
+  alternativeMatch: string | null;
+  customRecommendations: {
+    suggestedHashtags: string[];
+    contentTips: string[];
+  } | null;
+}
 
 // GET /api/intelligence/match-industry?q=bakery
 export async function GET(request: NextRequest) {
@@ -33,17 +46,17 @@ export async function GET(request: NextRequest) {
 
     // First try exact or partial match (fast, no AI needed)
     const lowerQuery = query.toLowerCase()
-    
+
     // Exact match
     const exactMatch = benchmarks.find(
       b => b.industry.toLowerCase() === lowerQuery
     )
-    
+
     if (exactMatch) {
       const fullBenchmark = await prisma.industryBenchmark.findUnique({
         where: { id: exactMatch.id }
       })
-      
+
       return NextResponse.json({
         query,
         match: {
@@ -68,7 +81,7 @@ export async function GET(request: NextRequest) {
       const fullBenchmark = await prisma.industryBenchmark.findUnique({
         where: { id: partialMatch.id }
       })
-      
+
       return NextResponse.json({
         query,
         match: {
@@ -89,7 +102,7 @@ export async function GET(request: NextRequest) {
       const fallback = await prisma.industryBenchmark.findUnique({
         where: { industry: "General Business" }
       })
-      
+
       return NextResponse.json({
         query,
         match: {
@@ -153,29 +166,29 @@ Respond with ONLY a JSON object in this exact format (no markdown, no code block
     const aiContent = aiResult.choices[0]?.message?.content
 
     // Parse AI response
-    let matchResult
+    let matchResult: MatchResult
     try {
       // Clean the response - remove markdown code blocks if present
       let cleanContent = aiContent.trim()
       if (cleanContent.startsWith('```')) {
         cleanContent = cleanContent.replace(/```json?\n?/g, '').replace(/```/g, '')
       }
-      
+
       matchResult = JSON.parse(cleanContent)
-      
+
       // Validate the matched industry exists
       const validMatch = industries.find(
         i => i.toLowerCase() === matchResult.matchedIndustry?.toLowerCase()
       )
-      
+
       if (!validMatch) {
         matchResult.matchedIndustry = "General Business"
         matchResult.confidence = "low"
       } else {
         matchResult.matchedIndustry = validMatch // Use exact casing
       }
-      
-    } catch (parseError) {
+
+    } catch {
       console.error('Failed to parse AI response:', aiContent)
       matchResult = {
         matchedIndustry: "General Business",
@@ -213,7 +226,7 @@ Respond with ONLY a JSON object in this exact format (no markdown, no code block
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    
+
     if (body.action === 'list-industries') {
       const industries = await prisma.industryBenchmark.findMany({
         select: {
