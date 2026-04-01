@@ -1,5 +1,24 @@
+// apps/web/src/app/api/intelligence/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
+
+// Type for industry defaults from benchmark
+interface IndustryDefaults {
+  postsPerWeek?: number;
+  preferredDays?: string[];
+  preferredTimes?: string[];
+  defaultTone?: string;
+  humorEnabled?: boolean;
+  industryHashtags?: string[];
+  primaryKeywords?: string[];
+  industryBenchmarks?: {
+    optimalPostsMin: number;
+    optimalPostsMax: number;
+    platformPriority: string[];
+    suggestedThemes: string[];
+    avgEngagementRate: number;
+  };
+}
 
 // GET /api/intelligence - List all company intelligences
 export async function GET(request: NextRequest) {
@@ -111,7 +130,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get industry benchmark for smart defaults
-    let industryDefaults = {}
+    let industryDefaults: IndustryDefaults = {}
     if (company.industry) {
       const benchmark = await prisma.industryBenchmark.findUnique({
         where: { industry: company.industry }
