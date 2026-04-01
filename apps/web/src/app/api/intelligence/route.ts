@@ -139,17 +139,17 @@ export async function POST(request: NextRequest) {
       if (benchmark) {
         industryDefaults = {
           postsPerWeek: benchmark.recommendedPostsPerWeek,
-          preferredDays: benchmark.bestDays,
-          preferredTimes: benchmark.bestTimes,
+          preferredDays: (benchmark.bestDays as string[]) || [],
+          preferredTimes: (benchmark.bestTimes as string[]) || [],
           defaultTone: benchmark.recommendedTone,
           humorEnabled: benchmark.humorAppropriate,
-          industryHashtags: benchmark.topHashtags,
-          primaryKeywords: benchmark.seoKeywords,
+          industryHashtags: (benchmark.topHashtags as string[]) || [],
+          primaryKeywords: (benchmark.seoKeywords as string[]) || [],
           industryBenchmarks: {
             optimalPostsMin: benchmark.optimalPostsMin,
             optimalPostsMax: benchmark.optimalPostsMax,
-            platformPriority: benchmark.platformPriority,
-            suggestedThemes: benchmark.suggestedThemes,
+            platformPriority: (benchmark.platformPriority as string[]) || [],
+            suggestedThemes: (benchmark.suggestedThemes as string[]) || [],
             avgEngagementRate: benchmark.avgEngagementRate
           }
         }
