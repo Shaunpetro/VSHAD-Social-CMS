@@ -201,6 +201,7 @@ export default function CompaniesPage() {
   }
 
   const displayDomain = getDisplayDomain(newCompanyWebsite);
+  const hasWebsiteError = newCompanyWebsite.trim().length > 0 && websiteValid === false;
 
   return (
     <div className="max-w-[1400px] mx-auto px-4 py-6 space-y-6">
@@ -261,7 +262,7 @@ export default function CompaniesPage() {
                 <div>
                   <h2 className="text-lg font-semibold text-[var(--text-primary)]">Add New Company</h2>
                   <p className="text-sm text-[var(--text-tertiary)] mt-0.5">
-                    We'll guide you through the setup
+                    We&apos;ll guide you through the setup
                   </p>
                 </div>
                 <button
@@ -358,7 +359,7 @@ export default function CompaniesPage() {
                       What happens next?
                     </p>
                     <p className="text-xs text-[var(--text-secondary)] mt-1">
-                      You'll go through a quick 5-step onboarding to set up your brand voice, 
+                      You&apos;ll go through a quick 5-step onboarding to set up your brand voice, 
                       content pillars, and posting preferences. Takes about 5 minutes.
                     </p>
                   </div>
@@ -377,7 +378,7 @@ export default function CompaniesPage() {
                 </button>
                 <button
                   type="submit"
-                  disabled={creating || !newCompanyName.trim() || (newCompanyWebsite.trim() && websiteValid === false)}
+                  disabled={creating || !newCompanyName.trim() || hasWebsiteError}
                   className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-brand-500 to-purple-600 text-white text-sm font-medium shadow-lg shadow-brand-500/25 hover:shadow-brand-500/40 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {creating ? (
