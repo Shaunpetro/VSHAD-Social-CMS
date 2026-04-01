@@ -150,7 +150,7 @@ export async function POST(request: NextRequest) {
             optimalPostsMax: benchmark.optimalPostsMax,
             platformPriority: (benchmark.platformPriority as string[]) || [],
             suggestedThemes: (benchmark.suggestedThemes as string[]) || [],
-            avgEngagementRate: benchmark.avgEngagementRate
+            avgEngagementRate: benchmark.avgEngagementRate ?? 0
           }
         }
       }
