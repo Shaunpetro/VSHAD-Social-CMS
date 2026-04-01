@@ -66,7 +66,7 @@ export default async function CompanyDetailPage({ params }: PageProps) {
               href={`/companies/${id}/onboarding`}
               className="bg-white text-blue-600 px-6 py-3 rounded-xl font-semibold hover:bg-blue-50 transition-colors shadow-md whitespace-nowrap"
             >
-              Start Setup →
+              Start Setup
             </Link>
           </div>
         </div>
@@ -109,7 +109,7 @@ export default async function CompanyDetailPage({ params }: PageProps) {
               </Link>
             )}
             <Link
-              href={`/generate?company=${id}`}
+              href={`/companies/${id}/generate`}
               className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
             >
               Generate Content
@@ -252,16 +252,16 @@ export default async function CompanyDetailPage({ params }: PageProps) {
           {/* Quick actions */}
           <div className="mt-6 pt-4 border-t flex gap-3">
             <Link
-              href={`/generate?company=${id}`}
+              href={`/companies/${id}/generate`}
               className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
             >
-              🚀 Generate This Week
+              Generate This Week
             </Link>
             <Link
               href={`/companies/${id}/onboarding`}
               className="px-4 py-2 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-gray-600"
             >
-              ✏️ Edit Settings
+              Edit Settings
             </Link>
           </div>
         </div>
@@ -272,16 +272,16 @@ export default async function CompanyDetailPage({ params }: PageProps) {
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-gray-900">Connected Platforms</h2>
           <Link
-            href="/platforms"
+            href={`/companies/${id}/platforms`}
             className="text-sm text-blue-600 hover:underline"
           >
-            Manage →
+            Manage
           </Link>
         </div>
         {company.platforms.length === 0 ? (
           <div className="text-center py-8 text-gray-400">
             <p>No platforms connected yet.</p>
-            <Link href="/platforms" className="text-blue-600 hover:underline text-sm mt-2 inline-block">
+            <Link href={`/companies/${id}/platforms`} className="text-blue-600 hover:underline text-sm mt-2 inline-block">
               Connect your first platform
             </Link>
           </div>
@@ -299,7 +299,7 @@ export default async function CompanyDetailPage({ params }: PageProps) {
                      platform.type === 'FACEBOOK' ? '📘' : '📱'}
                   </div>
                   <div>
-                    <p className="font-medium text-gray-900">{platform.platformName}</p>
+                    <p className="font-medium text-gray-900">{platform.name || platform.username || platform.type}</p>
                     <p className="text-xs text-gray-500">{platform.type}</p>
                   </div>
                 </div>
@@ -317,10 +317,10 @@ export default async function CompanyDetailPage({ params }: PageProps) {
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-gray-900">Recent Posts</h2>
           <Link
-            href={`/generate?company=${id}`}
+            href={`/companies/${id}/generate`}
             className="text-sm text-blue-600 hover:underline"
           >
-            Create New →
+            Create New
           </Link>
         </div>
         {company.generatedPosts.length === 0 ? (
