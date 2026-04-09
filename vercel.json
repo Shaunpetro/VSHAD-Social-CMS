@@ -10,6 +10,10 @@
       "schedule": "0 18 * * 0"
     },
     {
+      "path": "/api/analytics/sync",
+      "schedule": "0 */6 * * *"
+    },
+    {
       "path": "/api/cron/review",
       "schedule": "0 4 * * 6"
     }
