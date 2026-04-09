@@ -105,35 +105,47 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const companyGoals = intel?.primaryGoals || [];
 
     // Get content type context for AI
-    const contentTypeContext = getContentTypePromptEnhancement(
+    let contentTypeContext = getContentTypePromptEnhancement(
       contentType,
       dayOfWeek,
       funnelStage,
       companyGoals
     );
 
+    // Add brand context to contentTypeContext
+    if (intel?.brandVoice) {
+      contentTypeContext += `\n\n**BRAND VOICE:**\n${intel.brandVoice}`;
+    }
+    if (intel?.targetAudience) {
+      contentTypeContext += `\n\n**TARGET AUDIENCE:**\n${intel.targetAudience}`;
+    }
+    if (intel?.uniqueSellingPoints && intel.uniqueSellingPoints.length > 0) {
+      contentTypeContext += `\n\n**UNIQUE SELLING POINTS:**\n${intel.uniqueSellingPoints.map(usp => `- ${usp}`).join('\n')}`;
+    }
+
     // Build feedback instruction
     const feedbackInstruction = feedback 
-      ? `\n\nUser feedback on previous version: "${feedback}"\nPlease address this feedback in your new version.`
+      ? `\n\n**USER FEEDBACK ON PREVIOUS VERSION:**\n"${feedback}"\nPlease address this feedback in your new version.`
       : '\n\nPlease create a fresh, different approach to this topic.';
 
     // Generate new content
     const platformType = queueItem.platform.type.toLowerCase() as 'linkedin' | 'facebook' | 'twitter' | 'instagram';
     
     const result = await generateSocialContent({
-      platform: platformType,
-      topic,
-      tone,
+      companyId: queueItem.companyId,
       companyName: queueItem.company.name,
       companyDescription: queueItem.company.description || undefined,
+      companyIndustry: queueItem.company.industry || undefined,
+      platform: platformType,
+      platformId: queueItem.platformId,
+      topic,
+      tone,
       includeHashtags: true,
-      brandVoice: intel?.brandVoice || undefined,
-      targetAudience: intel?.targetAudience || undefined,
-      uniqueSellingPoints: intel?.uniqueSellingPoints || [],
+      useAnalytics: true,
       contentTypeContext: contentTypeContext + feedbackInstruction,
     });
 
-    if (!result.success || !result.content) {
+    if (!result.content) {
       // Revert status
       await prisma.contentQueueItem.update({
         where: { id },
