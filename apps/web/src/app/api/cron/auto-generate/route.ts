@@ -19,10 +19,11 @@ import {
  * Features:
  * - Psychology-based content mix (40-30-20-10 rule)
  * - Day-of-week optimization (right content for right day)
- * - Funnel-stage awareness (awareness → interest → consideration → conversion)
+ * - Funnel-stage awareness (awareness -> interest -> consideration -> conversion)
  * - Industry benchmark integration
  * - Goal-based content adjustment
  * - Self-learning from performance data
+ * - Optional single-company targeting via ?companyId= parameter
  */
 
 interface GenerationResult {
@@ -40,14 +41,23 @@ export async function GET(request: NextRequest) {
   const startTime = Date.now();
   const results: GenerationResult[] = [];
   
+  // Check for optional companyId parameter (for single-company generation from UI)
+  const { searchParams } = new URL(request.url);
+  const targetCompanyId = searchParams.get('companyId');
+  
   console.log('[AutoGenerate] ========================================');
   console.log('[AutoGenerate] Starting enhanced weekly content generation...');
   console.log('[AutoGenerate] Time:', new Date().toISOString());
+  if (targetCompanyId) {
+    console.log('[AutoGenerate] Targeting specific company:', targetCompanyId);
+  }
   
   try {
     // Find all companies with completed onboarding
+    // If companyId provided, only process that specific company
     const companies = await prisma.company.findMany({
       where: {
+        ...(targetCompanyId ? { id: targetCompanyId } : {}),
         intelligence: {
           onboardingCompleted: true,
         },
@@ -67,6 +77,14 @@ export async function GET(request: NextRequest) {
     });
     
     console.log(`[AutoGenerate] Found ${companies.length} active companies`);
+    
+    if (targetCompanyId && companies.length === 0) {
+      return NextResponse.json({
+        success: false,
+        error: 'Company not found or onboarding not completed',
+        timestamp: new Date().toISOString(),
+      }, { status: 404 });
+    }
     
     for (const company of companies) {
       const result: GenerationResult = {
@@ -241,7 +259,7 @@ export async function GET(request: NextRequest) {
               });
               
               result.postsScheduled++;
-              console.log(`[AutoGenerate] ✅ Scheduled: ${slot.contentType} for ${slot.date.toISOString()}`);
+              console.log(`[AutoGenerate] Scheduled: ${slot.contentType} for ${slot.date.toISOString()}`);
             } else {
               // Create ContentQueueItem for review
               await prisma.contentQueueItem.create({
@@ -271,7 +289,7 @@ export async function GET(request: NextRequest) {
               });
               
               result.postsQueued++;
-              console.log(`[AutoGenerate] 📋 Queued: ${slot.contentType} for review (${slot.date.toISOString()})`);
+              console.log(`[AutoGenerate] Queued: ${slot.contentType} for review (${slot.date.toISOString()})`);
             }
             
             // Update pillar post count if matched
@@ -285,14 +303,14 @@ export async function GET(request: NextRequest) {
           } catch (slotError) {
             const errorMsg = slotError instanceof Error ? slotError.message : 'Unknown error';
             result.errors.push(`${slot.contentType} generation failed: ${errorMsg}`);
-            console.error(`[AutoGenerate] ❌ Slot error:`, errorMsg);
+            console.error(`[AutoGenerate] Slot error:`, errorMsg);
           }
         }
         
       } catch (companyError) {
         const errorMsg = companyError instanceof Error ? companyError.message : 'Unknown error';
         result.errors.push(`Company processing failed: ${errorMsg}`);
-        console.error(`[AutoGenerate] ❌ Company error for ${company.name}:`, errorMsg);
+        console.error(`[AutoGenerate] Company error for ${company.name}:`, errorMsg);
       }
       
       results.push(result);
@@ -359,7 +377,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// Support POST as well (for manual triggers)
+// Support POST as well (for manual triggers from UI)
 export async function POST(request: NextRequest) {
   return GET(request);
 }
