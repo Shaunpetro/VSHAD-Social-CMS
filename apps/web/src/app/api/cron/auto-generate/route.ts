@@ -4,26 +4,26 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { generateSocialContent } from '@/lib/ai/openai';
 import { PostStatus, QueueStatus, PlatformType } from '@prisma/client';
+import {
+  generateWeeklyContentMix,
+  getContentTypePromptEnhancement,
+  CONTENT_TYPE_CONFIG,
+  type ContentType,
+  type ScheduledSlot,
+} from '@/lib/ai/content-strategy';
 
 /**
- * Auto-Generate Cron Job
- * Runs weekly (Sunday 8 PM or Monday 6 AM) to generate content for the upcoming week
+ * Enhanced Auto-Generate Cron Job
+ * Runs weekly (Sunday 8 PM SAST) to generate content for the upcoming week
  * 
- * Flow:
- * 1. Find all companies with onboardingCompleted=true
- * 2. For each company, check postsPerWeek, preferredDays, preferredTimes
- * 3. Get content pillars with frequency weights
- * 4. Get connected platforms
- * 5. Generate content for each scheduled slot
- * 6. If autoApprove=true -> Create GeneratedPost with SCHEDULED status
- * 7. If autoApprove=false -> Create ContentQueueItem with PENDING status
+ * Features:
+ * - Psychology-based content mix (40-30-20-10 rule)
+ * - Day-of-week optimization (right content for right day)
+ * - Funnel-stage awareness (awareness → interest → consideration → conversion)
+ * - Industry benchmark integration
+ * - Goal-based content adjustment
+ * - Self-learning from performance data
  */
-
-interface ScheduleSlot {
-  date: Date;
-  time: string;
-  dayOfWeek: string;
-}
 
 interface GenerationResult {
   companyId: string;
@@ -31,145 +31,9 @@ interface GenerationResult {
   postsGenerated: number;
   postsQueued: number;
   postsScheduled: number;
+  contentMix: Record<string, number>;
+  funnelMix: Record<string, number>;
   errors: string[];
-}
-
-const DAY_NAMES = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-
-/**
- * Get the next N days starting from tomorrow
- */
-function getUpcomingDays(count: number): Date[] {
-  const days: Date[] = [];
-  const today = new Date();
-  
-  for (let i = 1; i <= count; i++) {
-    const date = new Date(today);
-    date.setDate(today.getDate() + i);
-    date.setHours(0, 0, 0, 0);
-    days.push(date);
-  }
-  
-  return days;
-}
-
-/**
- * Generate schedule slots based on company preferences
- */
-function generateScheduleSlots(
-  postsPerWeek: number,
-  preferredDays: string[],
-  preferredTimes: Record<string, string[]> | null,
-  timezone: string
-): ScheduleSlot[] {
-  const slots: ScheduleSlot[] = [];
-  const upcomingDays = getUpcomingDays(7);
-  
-  // Default times if none specified
-  const defaultTimes = ['09:00', '14:00'];
-  
-  // Filter to preferred days only
-  const validDays = upcomingDays.filter(date => {
-    const dayName = DAY_NAMES[date.getDay()];
-    return preferredDays.length === 0 || preferredDays.includes(dayName);
-  });
-  
-  if (validDays.length === 0) {
-    // Fallback to all weekdays if no preferred days
-    validDays.push(...upcomingDays.filter(date => {
-      const day = date.getDay();
-      return day >= 1 && day <= 5; // Monday to Friday
-    }));
-  }
-  
-  // Distribute posts across available days
-  let postsAssigned = 0;
-  let dayIndex = 0;
-  
-  while (postsAssigned < postsPerWeek && validDays.length > 0) {
-    const date = validDays[dayIndex % validDays.length];
-    const dayName = DAY_NAMES[date.getDay()];
-    
-    // Get times for this day
-    const timesForDay = preferredTimes?.[dayName] || defaultTimes;
-    const timeIndex = Math.floor(postsAssigned / validDays.length) % timesForDay.length;
-    const time = timesForDay[timeIndex] || defaultTimes[0];
-    
-    slots.push({
-      date: new Date(date),
-      time,
-      dayOfWeek: dayName,
-    });
-    
-    postsAssigned++;
-    dayIndex++;
-  }
-  
-  return slots;
-}
-
-/**
- * Select a content pillar based on frequency weights
- */
-function selectPillar(pillars: Array<{ id: string; name: string; frequencyWeight: number; topics: string[] }>): {
-  pillarId: string;
-  pillarName: string;
-  topic: string;
-} | null {
-  if (pillars.length === 0) return null;
-  
-  // Weighted random selection
-  const totalWeight = pillars.reduce((sum, p) => sum + p.frequencyWeight, 0);
-  let random = Math.random() * totalWeight;
-  
-  for (const pillar of pillars) {
-    random -= pillar.frequencyWeight;
-    if (random <= 0) {
-      // Select random topic from pillar
-      const topic = pillar.topics.length > 0
-        ? pillar.topics[Math.floor(Math.random() * pillar.topics.length)]
-        : pillar.name;
-      
-      return {
-        pillarId: pillar.id,
-        pillarName: pillar.name,
-        topic,
-      };
-    }
-  }
-  
-  // Fallback to first pillar
-  const firstPillar = pillars[0];
-  return {
-    pillarId: firstPillar.id,
-    pillarName: firstPillar.name,
-    topic: firstPillar.topics[0] || firstPillar.name,
-  };
-}
-
-/**
- * Determine tone based on day and company settings
- */
-function getToneForDay(
-  dayOfWeek: string,
-  defaultTone: string,
-  dayToneSchedule: Record<string, string> | null,
-  humorEnabled: boolean,
-  humorDays: string[]
-): string {
-  // Check day-specific tone schedule
-  if (dayToneSchedule && dayToneSchedule[dayOfWeek]) {
-    return dayToneSchedule[dayOfWeek];
-  }
-  
-  // Check if humor is appropriate for this day
-  if (humorEnabled && humorDays.includes(dayOfWeek)) {
-    // Add some variety on humor days
-    const humorTones = ['casual', 'friendly'];
-    return humorTones[Math.floor(Math.random() * humorTones.length)];
-  }
-  
-  return defaultTone;
 }
 
 export async function GET(request: NextRequest) {
@@ -177,7 +41,7 @@ export async function GET(request: NextRequest) {
   const results: GenerationResult[] = [];
   
   console.log('[AutoGenerate] ========================================');
-  console.log('[AutoGenerate] Starting weekly content generation...');
+  console.log('[AutoGenerate] Starting enhanced weekly content generation...');
   console.log('[AutoGenerate] Time:', new Date().toISOString());
   
   try {
@@ -211,6 +75,8 @@ export async function GET(request: NextRequest) {
         postsGenerated: 0,
         postsQueued: 0,
         postsScheduled: 0,
+        contentMix: {},
+        funnelMix: {},
         errors: [],
       };
       
@@ -230,45 +96,72 @@ export async function GET(request: NextRequest) {
         }
         
         console.log(`[AutoGenerate] Processing ${company.name}: ${intel.postsPerWeek} posts/week`);
+        console.log(`[AutoGenerate] Goals: ${intel.primaryGoals.join(', ') || 'none set'}`);
+        console.log(`[AutoGenerate] Preferred days: ${intel.preferredDays.join(', ') || 'not set'}`);
         
-        // Generate schedule slots
-        const slots = generateScheduleSlots(
+        // Fetch industry benchmark for additional themes
+        let industryThemes: Record<string, string[]> | null = null;
+        let industryHashtags: string[] = [];
+        
+        if (company.industry) {
+          const benchmark = await prisma.industryBenchmark.findFirst({
+            where: {
+              industry: {
+                contains: company.industry,
+                mode: 'insensitive',
+              },
+            },
+          });
+          
+          if (benchmark) {
+            industryThemes = benchmark.suggestedThemes as Record<string, string[]> | null;
+            industryHashtags = benchmark.topHashtags || [];
+            console.log(`[AutoGenerate] Found industry benchmark for: ${benchmark.industry}`);
+          }
+        }
+        
+        // Collect all topics from content pillars
+        const pillarTopics: string[] = [];
+        const pillarMap: Record<string, { id: string; name: string; topics: string[]; contentTypes: string[] }> = {};
+        
+        for (const pillar of intel.contentPillars) {
+          pillarTopics.push(...pillar.topics);
+          pillarMap[pillar.name] = {
+            id: pillar.id,
+            name: pillar.name,
+            topics: pillar.topics,
+            contentTypes: pillar.contentTypes,
+          };
+        }
+        
+        // Generate psychology-based content mix for the week
+        const contentMix = generateWeeklyContentMix(
           intel.postsPerWeek,
           intel.preferredDays,
           intel.preferredTimes as Record<string, string[]> | null,
-          intel.timezone
+          intel.primaryGoals,
+          pillarTopics,
+          industryThemes,
+          company.industry,
+          intel.learnedBestPillars as Record<string, number> | null
         );
         
-        console.log(`[AutoGenerate] Generated ${slots.length} schedule slots`);
+        console.log(`[AutoGenerate] Generated ${contentMix.slots.length} content slots`);
+        console.log(`[AutoGenerate] Content mix:`, contentMix.mixBreakdown);
+        console.log(`[AutoGenerate] Funnel mix:`, contentMix.funnelBreakdown);
         
-        // Get pillars for content variety
-        const pillars = intel.contentPillars.map(p => ({
-          id: p.id,
-          name: p.name,
-          frequencyWeight: p.frequencyWeight,
-          topics: p.topics,
-        }));
+        // Store mix breakdown in result
+        result.contentMix = contentMix.mixBreakdown as Record<string, number>;
+        result.funnelMix = contentMix.funnelBreakdown as Record<string, number>;
         
-        for (const slot of slots) {
+        // Generate content for each slot
+        for (const slot of contentMix.slots) {
           try {
-            // Select pillar and topic
-            const pillarSelection = selectPillar(pillars);
-            const topic = pillarSelection?.topic || `${company.industry || 'business'} insights`;
-            
-            // Determine tone for this day
-            const tone = getToneForDay(
-              slot.dayOfWeek,
-              intel.defaultTone,
-              intel.dayToneSchedule as Record<string, string> | null,
-              intel.humorEnabled,
-              intel.humorDays
-            );
-            
             // Select platform (rotate through connected platforms)
             const platformIndex = result.postsGenerated % company.platforms.length;
             const platform = company.platforms[platformIndex];
             
-            // Map platform type to lowercase for generateSocialContent
+            // Map platform type
             const platformTypeMap: Record<PlatformType, 'linkedin' | 'facebook' | 'twitter' | 'instagram' | 'wordpress'> = {
               LINKEDIN: 'linkedin',
               FACEBOOK: 'facebook',
@@ -276,12 +169,32 @@ export async function GET(request: NextRequest) {
               INSTAGRAM: 'instagram',
               WORDPRESS: 'wordpress',
             };
-            
             const platformType = platformTypeMap[platform.type];
             
-            // Generate content
-            console.log(`[AutoGenerate] Generating for ${platform.type} - Topic: ${topic}, Tone: ${tone}`);
+            // Determine tone based on day and company settings
+            const tone = determineTone(
+              slot.dayOfWeek,
+              slot.contentType,
+              intel.defaultTone,
+              intel.dayToneSchedule as Record<string, string> | null,
+              intel.humorEnabled,
+              intel.humorDays
+            );
             
+            // Get content type prompt enhancement
+            const contentTypeContext = getContentTypePromptEnhancement(
+              slot.contentType,
+              slot.dayOfWeek,
+              slot.funnelStage,
+              intel.primaryGoals
+            );
+            
+            // Find matching pillar for this content
+            const matchingPillar = findMatchingPillar(slot.contentType, pillarMap);
+            
+            console.log(`[AutoGenerate] Generating: ${slot.contentType} for ${slot.dayOfWeek} ${slot.time} on ${platform.type}`);
+            
+            // Generate content with enhanced context
             const generated = await generateSocialContent({
               companyId: company.id,
               companyName: company.name,
@@ -289,19 +202,24 @@ export async function GET(request: NextRequest) {
               companyIndustry: company.industry || undefined,
               platform: platformType,
               platformId: platform.id,
-              topic,
+              topic: slot.topicSuggestion,
               tone: tone as 'professional' | 'casual' | 'friendly' | 'authoritative',
               includeHashtags: true,
               includeEmojis: platformType === 'instagram' || platformType === 'facebook',
               useAnalytics: true,
+              // Enhanced context passed to AI
+              contentTypeContext,
             });
             
             result.postsGenerated++;
             
-            // Calculate scheduled datetime
-            const scheduledFor = new Date(slot.date);
-            const [hours, minutes] = slot.time.split(':').map(Number);
-            scheduledFor.setHours(hours, minutes, 0, 0);
+            // Merge industry hashtags with generated ones
+            const finalHashtags = mergeHashtags(
+              generated.hashtags,
+              industryHashtags,
+              intel.industryHashtags,
+              intel.brandedHashtags
+            );
             
             if (intel.autoApprove) {
               // Create GeneratedPost directly with SCHEDULED status
@@ -310,18 +228,20 @@ export async function GET(request: NextRequest) {
                   companyId: company.id,
                   platformId: platform.id,
                   content: generated.content,
-                  hashtags: generated.hashtags,
-                  topic,
+                  hashtags: finalHashtags,
+                  topic: slot.topicSuggestion,
                   tone,
-                  pillar: pillarSelection?.pillarName,
-                  scheduledFor,
+                  pillar: matchingPillar?.name || null,
+                  contentType: slot.contentType,
+                  scheduledFor: slot.date,
                   status: PostStatus.SCHEDULED,
-                  generatedBy: 'groq-llama-3.3-auto',
+                  generatedBy: 'groq-llama-3.3-auto-v2',
+                  hook: extractHook(generated.content),
                 },
               });
               
               result.postsScheduled++;
-              console.log(`[AutoGenerate] Scheduled post for ${scheduledFor.toISOString()}`);
+              console.log(`[AutoGenerate] ✅ Scheduled: ${slot.contentType} for ${slot.date.toISOString()}`);
             } else {
               // Create ContentQueueItem for review
               await prisma.contentQueueItem.create({
@@ -329,17 +249,21 @@ export async function GET(request: NextRequest) {
                   companyId: company.id,
                   platformId: platform.id,
                   content: generated.content,
-                  hashtags: generated.hashtags,
+                  hashtags: finalHashtags,
                   keywords: intel.primaryKeywords,
-                  pillar: pillarSelection?.pillarName,
+                  pillar: matchingPillar?.name || null,
+                  contentType: slot.contentType,
                   tone,
-                  suggestedDate: scheduledFor,
+                  suggestedDate: slot.date,
                   suggestedTime: slot.time,
                   status: QueueStatus.PENDING,
-                  engagementPrediction: generated.analyticsUsed ? 'high' : 'medium',
+                  hook: extractHook(generated.content),
+                  engagementPrediction: predictEngagement(slot.contentType, slot.funnelStage),
                   generationContext: {
-                    topic,
-                    pillarId: pillarSelection?.pillarId,
+                    contentType: slot.contentType,
+                    funnelStage: slot.funnelStage,
+                    dayPsychology: slot.toneGuidance,
+                    topicSuggestion: slot.topicSuggestion,
                     analyticsUsed: generated.analyticsUsed,
                     generatedAt: new Date().toISOString(),
                   },
@@ -347,28 +271,28 @@ export async function GET(request: NextRequest) {
               });
               
               result.postsQueued++;
-              console.log(`[AutoGenerate] Queued post for review (${scheduledFor.toISOString()})`);
+              console.log(`[AutoGenerate] 📋 Queued: ${slot.contentType} for review (${slot.date.toISOString()})`);
             }
             
-            // Update pillar post count
-            if (pillarSelection?.pillarId) {
+            // Update pillar post count if matched
+            if (matchingPillar) {
               await prisma.contentPillar.update({
-                where: { id: pillarSelection.pillarId },
+                where: { id: matchingPillar.id },
                 data: { totalPosts: { increment: 1 } },
               });
             }
             
           } catch (slotError) {
             const errorMsg = slotError instanceof Error ? slotError.message : 'Unknown error';
-            result.errors.push(`Slot generation failed: ${errorMsg}`);
-            console.error(`[AutoGenerate] Slot error:`, errorMsg);
+            result.errors.push(`${slot.contentType} generation failed: ${errorMsg}`);
+            console.error(`[AutoGenerate] ❌ Slot error:`, errorMsg);
           }
         }
         
       } catch (companyError) {
         const errorMsg = companyError instanceof Error ? companyError.message : 'Unknown error';
         result.errors.push(`Company processing failed: ${errorMsg}`);
-        console.error(`[AutoGenerate] Company error for ${company.name}:`, errorMsg);
+        console.error(`[AutoGenerate] ❌ Company error for ${company.name}:`, errorMsg);
       }
       
       results.push(result);
@@ -387,16 +311,35 @@ export async function GET(request: NextRequest) {
       { generated: 0, queued: 0, scheduled: 0, errors: 0 }
     );
     
+    // Aggregate content mix across all companies
+    const aggregateContentMix: Record<string, number> = {};
+    const aggregateFunnelMix: Record<string, number> = {};
+    
+    for (const r of results) {
+      for (const [type, count] of Object.entries(r.contentMix)) {
+        aggregateContentMix[type] = (aggregateContentMix[type] || 0) + count;
+      }
+      for (const [stage, count] of Object.entries(r.funnelMix)) {
+        aggregateFunnelMix[stage] = (aggregateFunnelMix[stage] || 0) + count;
+      }
+    }
+    
     console.log('[AutoGenerate] ========================================');
     console.log(`[AutoGenerate] Completed in ${duration}ms`);
-    console.log(`[AutoGenerate] Generated: ${totals.generated}, Queued: ${totals.queued}, Scheduled: ${totals.scheduled}, Errors: ${totals.errors}`);
+    console.log(`[AutoGenerate] Generated: ${totals.generated}, Queued: ${totals.queued}, Scheduled: ${totals.scheduled}`);
+    console.log(`[AutoGenerate] Content Mix:`, aggregateContentMix);
+    console.log(`[AutoGenerate] Funnel Mix:`, aggregateFunnelMix);
     console.log('[AutoGenerate] ========================================');
     
     return NextResponse.json({
       success: true,
       timestamp: new Date().toISOString(),
       duration: `${duration}ms`,
-      summary: totals,
+      summary: {
+        ...totals,
+        contentMix: aggregateContentMix,
+        funnelMix: aggregateFunnelMix,
+      },
       companies: results,
     });
     
@@ -419,4 +362,137 @@ export async function GET(request: NextRequest) {
 // Support POST as well (for manual triggers)
 export async function POST(request: NextRequest) {
   return GET(request);
+}
+
+// ============================================
+// HELPER FUNCTIONS
+// ============================================
+
+/**
+ * Determine tone based on day, content type, and company settings
+ */
+function determineTone(
+  dayOfWeek: string,
+  contentType: ContentType,
+  defaultTone: string,
+  dayToneSchedule: Record<string, string> | null,
+  humorEnabled: boolean,
+  humorDays: string[]
+): string {
+  // Check day-specific tone schedule first
+  if (dayToneSchedule && dayToneSchedule[dayOfWeek.toLowerCase()]) {
+    return dayToneSchedule[dayOfWeek.toLowerCase()];
+  }
+  
+  // Content type specific tone adjustments
+  const contentTypeTones: Partial<Record<ContentType, string>> = {
+    behindTheScenes: 'casual',
+    engagement: 'friendly',
+    community: 'friendly',
+    motivational: 'authoritative',
+    promotional: 'professional',
+  };
+  
+  if (contentTypeTones[contentType]) {
+    return contentTypeTones[contentType]!;
+  }
+  
+  // Check if humor is appropriate
+  if (humorEnabled && humorDays.includes(dayOfWeek.toLowerCase())) {
+    const casualTypes: ContentType[] = ['behindTheScenes', 'engagement', 'community'];
+    if (casualTypes.includes(contentType)) {
+      return 'casual';
+    }
+  }
+  
+  return defaultTone;
+}
+
+/**
+ * Find a matching pillar for the content type
+ */
+function findMatchingPillar(
+  contentType: ContentType,
+  pillarMap: Record<string, { id: string; name: string; topics: string[]; contentTypes: string[] }>
+): { id: string; name: string } | null {
+  // Find pillar that includes this content type
+  for (const [name, pillar] of Object.entries(pillarMap)) {
+    if (pillar.contentTypes.includes(contentType)) {
+      return { id: pillar.id, name: pillar.name };
+    }
+  }
+  
+  // Fallback: return first pillar if any exist
+  const firstPillar = Object.values(pillarMap)[0];
+  return firstPillar ? { id: firstPillar.id, name: firstPillar.name } : null;
+}
+
+/**
+ * Merge and deduplicate hashtags from multiple sources
+ */
+function mergeHashtags(
+  generated: string[],
+  industry: string[],
+  companyIndustry: string[],
+  branded: string[]
+): string[] {
+  const allHashtags = new Set<string>();
+  
+  // Add generated hashtags first (priority)
+  for (const tag of generated.slice(0, 5)) {
+    allHashtags.add(tag.toLowerCase().replace(/^#/, ''));
+  }
+  
+  // Add branded hashtags (always include)
+  for (const tag of branded) {
+    allHashtags.add(tag.toLowerCase().replace(/^#/, ''));
+  }
+  
+  // Add some company industry hashtags
+  for (const tag of companyIndustry.slice(0, 2)) {
+    allHashtags.add(tag.toLowerCase().replace(/^#/, ''));
+  }
+  
+  // Add some general industry hashtags
+  for (const tag of industry.slice(0, 2)) {
+    if (allHashtags.size < 10) {
+      allHashtags.add(tag.toLowerCase().replace(/^#/, ''));
+    }
+  }
+  
+  return Array.from(allHashtags).slice(0, 10);
+}
+
+/**
+ * Extract the hook (first sentence/line) from content
+ */
+function extractHook(content: string): string {
+  // Try to get first sentence or first line
+  const firstLine = content.split('\n')[0];
+  const firstSentence = content.split(/[.!?]/)[0];
+  
+  // Return whichever is shorter (but not empty)
+  if (firstLine.length > 0 && firstLine.length <= firstSentence.length) {
+    return firstLine.substring(0, 150);
+  }
+  
+  return firstSentence.substring(0, 150);
+}
+
+/**
+ * Predict engagement level based on content type and funnel stage
+ */
+function predictEngagement(contentType: ContentType, funnelStage: string): string {
+  const highEngagementTypes: ContentType[] = ['engagement', 'community', 'behindTheScenes'];
+  const mediumEngagementTypes: ContentType[] = ['educational', 'tips', 'motivational'];
+  
+  if (highEngagementTypes.includes(contentType)) {
+    return 'high';
+  }
+  
+  if (mediumEngagementTypes.includes(contentType)) {
+    return 'medium';
+  }
+  
+  return 'medium';
 }

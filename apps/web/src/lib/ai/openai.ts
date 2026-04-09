@@ -1,5 +1,5 @@
 // apps/web/src/lib/ai/openai.ts
-// Using Groq (free Llama 3.3 70B) with Performance Analytics Integration
+// Using Groq (free Llama 3.3 70B) with Performance Analytics + Content Strategy Integration
 
 import Groq from "groq-sdk";
 import {
@@ -21,6 +21,7 @@ const platformConfigs = {
     format:
       "Use line breaks for readability. Can include bullet points. End with a call-to-action or thought-provoking question.",
     hashtagCount: "3-5 relevant industry hashtags",
+    audienceContext: "Professional network - decision makers, industry peers, potential clients/employers",
   },
   twitter: {
     maxLength: 280,
@@ -28,6 +29,7 @@ const platformConfigs = {
     format:
       "Single impactful message. Can use thread format indication if needed. Keep it shareable.",
     hashtagCount: "1-2 hashtags maximum",
+    audienceContext: "Fast-scrolling audience - grab attention immediately, be memorable",
   },
   facebook: {
     maxLength: 2000,
@@ -35,6 +37,7 @@ const platformConfigs = {
     format:
       "Friendly tone, can be longer form. Encourage comments and shares. Use emojis sparingly if appropriate.",
     hashtagCount: "2-3 hashtags",
+    audienceContext: "Community-oriented - friends, family, local connections, brand followers",
   },
   instagram: {
     maxLength: 2200,
@@ -42,6 +45,7 @@ const platformConfigs = {
     format:
       "Caption that complements an image. Use line breaks, emojis encouraged. Hashtags at the end.",
     hashtagCount: "5-10 relevant hashtags",
+    audienceContext: "Visual-first audience - lifestyle focused, discovery-oriented, younger demographic",
   },
   wordpress: {
     maxLength: 5000,
@@ -49,6 +53,7 @@ const platformConfigs = {
     format:
       "Blog post structure with introduction, body paragraphs, and conclusion. Use headers (##) for sections. Include a meta description.",
     hashtagCount: "3-5 tags/categories",
+    audienceContext: "Readers seeking in-depth information - longer attention span, searching for solutions",
   },
 };
 
@@ -71,7 +76,8 @@ export interface GenerateContentParams {
   tone?: "professional" | "casual" | "friendly" | "authoritative";
   includeHashtags?: boolean;
   includeEmojis?: boolean;
-  useAnalytics?: boolean; // NEW: Enable performance-based learning
+  useAnalytics?: boolean;
+  contentTypeContext?: string; // NEW: Content strategy context from auto-generate
 }
 
 export interface GeneratedContent {
@@ -97,7 +103,8 @@ export async function generateSocialContent(
     tone = "professional",
     includeHashtags = true,
     includeEmojis = false,
-    useAnalytics = true, // Default to using analytics
+    useAnalytics = true,
+    contentTypeContext, // NEW
   } = params;
 
   const config = platformConfigs[platform];
@@ -126,52 +133,43 @@ export async function generateSocialContent(
     }
   }
 
-  const prompt = `You are a social media content expert with access to performance analytics. Generate a ${platform.toUpperCase()} post for the following company:
-
-**Company Name:** ${companyName}
-**Industry:** ${companyIndustry || "Not specified"}
-**Company Description:** ${companyDescription || "Not provided"}
-${insightsPrompt}
-**Content Requirements:**
-- Platform: ${platform.toUpperCase()}
-- Maximum Length: ${config.maxLength} characters
-- Style: ${config.style}
-- Tone: ${toneDesc}
-- Format Guidelines: ${config.format}
-${topic ? `- Topic/Focus: ${topic}` : "- Topic: Create engaging content relevant to the company's industry and services"}
-${includeEmojis ? "- Include relevant emojis to enhance engagement" : "- Minimal or no emojis"}
-${includeHashtags ? `- Include ${config.hashtagCount} at the end` : "- Do not include hashtags"}
-
-**IMPORTANT INSTRUCTIONS:**
-1. Write ONLY the post content - no explanations, no "Here's your post:", no meta commentary
-2. Make it sound natural and human, not AI-generated
-3. Focus on providing value to the reader
-4. Match the brand voice based on the company description
-5. Keep within the character limit for ${platform}
-${insights?.hasData ? "6. LEARN FROM THE PERFORMANCE INSIGHTS ABOVE - incorporate successful patterns while keeping content fresh and original" : ""}
-
-Generate the post now:`;
+  // Build the enhanced prompt
+  const prompt = buildEnhancedPrompt({
+    companyName,
+    companyDescription,
+    companyIndustry,
+    platform,
+    config,
+    toneDesc,
+    tone,
+    topic,
+    includeEmojis,
+    includeHashtags,
+    insightsPrompt,
+    contentTypeContext,
+  });
 
   try {
     const chatCompletion = await groq.chat.completions.create({
       messages: [
+        {
+          role: "system",
+          content: getSystemPrompt(),
+        },
         {
           role: "user",
           content: prompt,
         },
       ],
       model: "llama-3.3-70b-versatile",
-      temperature: 0.7,
+      temperature: 0.75, // Slightly higher for more creativity
       max_tokens: 1024,
     });
 
     let content = chatCompletion.choices[0]?.message?.content?.trim() || "";
 
     // Clean up any unwanted prefixes the AI might add
-    content = content
-      .replace(/^(Here's|Here is|Sure,|Okay,).*?:\s*/i, "")
-      .replace(/^["']|["']$/g, "")
-      .trim();
+    content = cleanGeneratedContent(content);
 
     // Extract hashtags from content
     const hashtagRegex = /#\w+/g;
@@ -191,6 +189,124 @@ Generate the post now:`;
       `Failed to generate content: ${error instanceof Error ? error.message : "Unknown error"}`
     );
   }
+}
+
+/**
+ * Build the enhanced prompt with content strategy context
+ */
+function buildEnhancedPrompt(params: {
+  companyName: string;
+  companyDescription?: string;
+  companyIndustry?: string;
+  platform: string;
+  config: typeof platformConfigs.linkedin;
+  toneDesc: string;
+  tone: string;
+  topic?: string;
+  includeEmojis: boolean;
+  includeHashtags: boolean;
+  insightsPrompt: string;
+  contentTypeContext?: string;
+}): string {
+  const {
+    companyName,
+    companyDescription,
+    companyIndustry,
+    platform,
+    config,
+    toneDesc,
+    tone,
+    topic,
+    includeEmojis,
+    includeHashtags,
+    insightsPrompt,
+    contentTypeContext,
+  } = params;
+
+  let prompt = `Generate a ${platform.toUpperCase()} post for:
+
+**COMPANY:**
+- Name: ${companyName}
+- Industry: ${companyIndustry || "Not specified"}
+- Description: ${companyDescription || "Not provided"}
+
+**PLATFORM REQUIREMENTS:**
+- Platform: ${platform.toUpperCase()}
+- Maximum Length: ${config.maxLength} characters
+- Style: ${config.style}
+- Tone: ${toneDesc}
+- Format: ${config.format}
+- Audience: ${config.audienceContext}
+${topic ? `- Topic/Focus: ${topic}` : ""}
+${includeEmojis ? "- Include relevant emojis to enhance engagement" : "- Minimal or no emojis"}
+${includeHashtags ? `- Include ${config.hashtagCount} at the end` : "- Do not include hashtags"}
+`;
+
+  // Add content type context if provided (from auto-generate)
+  if (contentTypeContext) {
+    prompt += `
+${contentTypeContext}
+`;
+  }
+
+  // Add performance insights if available
+  if (insightsPrompt) {
+    prompt += `
+${insightsPrompt}
+`;
+  }
+
+  prompt += `
+**CRITICAL INSTRUCTIONS:**
+1. Write ONLY the post content - no explanations, no "Here's your post:", no meta commentary
+2. Start with a STRONG HOOK - the first line must grab attention immediately
+3. Make it sound natural and human, not AI-generated
+4. Focus on providing value to the reader
+5. Match the brand voice based on the company description
+6. Keep within the character limit for ${platform}
+7. End with engagement driver (question, CTA, or thought-provoker) when appropriate
+${contentTypeContext ? "8. FOLLOW THE CONTENT TYPE GUIDANCE ABOVE - this determines the PURPOSE of the post" : ""}
+${insightsPrompt ? "9. LEARN FROM PERFORMANCE INSIGHTS - incorporate patterns from successful posts" : ""}
+
+Generate the post now:`;
+
+  return prompt;
+}
+
+/**
+ * Get system prompt for consistent AI behavior
+ */
+function getSystemPrompt(): string {
+  return `You are an expert social media content strategist with deep knowledge of:
+- Platform-specific best practices (LinkedIn, Facebook, Instagram, Twitter)
+- Content psychology and engagement triggers
+- Sales funnel awareness (awareness → interest → consideration → conversion)
+- Brand voice adaptation
+- Hook writing and attention capture
+
+Your content should:
+- Feel authentic and human, never robotic or template-like
+- Provide genuine value to the reader
+- Match the requested tone and content type precisely
+- Drive the intended action (engage, educate, convert, etc.)
+
+You never explain your work or add meta-commentary. You only output the final post content.`;
+}
+
+/**
+ * Clean up generated content from common AI artifacts
+ */
+function cleanGeneratedContent(content: string): string {
+  return content
+    // Remove common prefixes
+    .replace(/^(Here's|Here is|Sure,|Okay,|Certainly,|Of course,).*?:\s*/i, "")
+    .replace(/^(Here's a|Here is a|I've created|I created).*?:\s*/i, "")
+    .replace(/^["']|["']$/g, "")
+    // Remove any "Post:" or similar labels
+    .replace(/^(Post|Content|Caption|Tweet|Update):\s*/i, "")
+    // Remove trailing explanations
+    .replace(/\n\n(This post|I've|I hope|Let me know|Feel free).*$/is, "")
+    .trim();
 }
 
 export async function regenerateContent(
@@ -226,31 +342,36 @@ export async function regenerateContent(
     }
   }
 
-  const prompt = `You are a social media content expert with access to performance analytics. Improve the following ${platform.toUpperCase()} post based on the feedback provided.
+  const prompt = `Improve the following ${platform.toUpperCase()} post based on the feedback provided.
 
-**Original Post:**
+**ORIGINAL POST:**
 ${originalContent}
 
-**Feedback/Instructions:**
+**FEEDBACK/INSTRUCTIONS:**
 ${feedback}
 ${insightsPrompt}
-**Platform Requirements:**
+**PLATFORM REQUIREMENTS:**
 - Platform: ${platform.toUpperCase()}
 - Maximum Length: ${config.maxLength} characters
 - Style: ${config.style}
 
-**IMPORTANT INSTRUCTIONS:**
+**INSTRUCTIONS:**
 1. Write ONLY the improved post content - no explanations, no commentary
 2. Apply the feedback while maintaining the core message
 3. Keep the same general tone unless feedback says otherwise
-4. Stay within character limits
-${insights?.hasData ? "5. APPLY INSIGHTS from high-performing posts to maximize engagement" : ""}
+4. Ensure strong hook at the beginning
+5. Stay within character limits
+${insights?.hasData ? "6. Apply insights from high-performing posts to maximize engagement" : ""}
 
 Generate the improved post now:`;
 
   try {
     const chatCompletion = await groq.chat.completions.create({
       messages: [
+        {
+          role: "system",
+          content: getSystemPrompt(),
+        },
         {
           role: "user",
           content: prompt,
@@ -262,12 +383,7 @@ Generate the improved post now:`;
     });
 
     let content = chatCompletion.choices[0]?.message?.content?.trim() || "";
-
-    // Clean up any unwanted prefixes
-    content = content
-      .replace(/^(Here's|Here is|Sure,|Okay,|Improved|Updated).*?:\s*/i, "")
-      .replace(/^["']|["']$/g, "")
-      .trim();
+    content = cleanGeneratedContent(content);
 
     // Extract hashtags
     const hashtagRegex = /#\w+/g;
