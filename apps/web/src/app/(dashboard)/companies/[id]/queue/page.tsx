@@ -29,6 +29,8 @@ import {
   ThumbsUp,
   MessageCircle,
   Share2,
+  Wand2,
+  Zap,
 } from 'lucide-react';
 
 // ---------------------------------------------------------------
@@ -138,6 +140,9 @@ export default function CompanyQueuePage() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [expandedPost, setExpandedPost] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; type: 'post' | 'queue' } | null>(null);
+  
+  // Weekly generation state
+  const [isGeneratingWeekly, setIsGeneratingWeekly] = useState(false);
 
   // ---------------------------------------------------------------
   // Data Fetching
@@ -215,6 +220,49 @@ export default function CompanyQueuePage() {
   // ---------------------------------------------------------------
   // Actions
   // ---------------------------------------------------------------
+
+  async function handleGenerateWeeklyContent() {
+    setIsGeneratingWeekly(true);
+    setNotification(null);
+    
+    try {
+      const res = await fetch(`/api/cron/auto-generate?companyId=${companyId}`, {
+        method: 'POST',
+      });
+      
+      const data = await res.json();
+      
+      if (res.ok && data.success) {
+        const company = data.companies?.[0];
+        const generated = company?.postsGenerated || 0;
+        const queued = company?.postsQueued || 0;
+        const scheduled = company?.postsScheduled || 0;
+        
+        if (generated === 0) {
+          setNotification({
+            type: 'error',
+            message: company?.errors?.[0] || 'No content generated. Check company settings and connected platforms.',
+          });
+        } else {
+          setNotification({
+            type: 'success',
+            message: `Generated ${generated} posts! ${queued > 0 ? `${queued} pending review.` : ''} ${scheduled > 0 ? `${scheduled} auto-scheduled.` : ''}`,
+          });
+          fetchData();
+        }
+      } else {
+        throw new Error(data.error || 'Generation failed');
+      }
+    } catch (error) {
+      console.error('Weekly generation failed:', error);
+      setNotification({
+        type: 'error',
+        message: error instanceof Error ? error.message : 'Failed to generate weekly content',
+      });
+    } finally {
+      setIsGeneratingWeekly(false);
+    }
+  }
 
   async function handleApproveQueue(queueId: string) {
     setActionLoading(queueId);
@@ -402,12 +450,32 @@ export default function CompanyQueuePage() {
           >
             <RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} />
           </button>
+          
+          {/* NEW: Generate Weekly Content Button */}
+          <button
+            onClick={handleGenerateWeeklyContent}
+            disabled={isGeneratingWeekly}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-purple-500 to-pink-500 text-white text-sm font-medium hover:from-purple-600 hover:to-pink-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isGeneratingWeekly ? (
+              <>
+                <Loader2 size={16} className="animate-spin" />
+                Generating...
+              </>
+            ) : (
+              <>
+                <Zap size={16} />
+                Generate Weekly
+              </>
+            )}
+          </button>
+          
           <Link
             href={`/companies/${companyId}/generate`}
             className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity"
           >
             <Plus size={16} />
-            Generate Content
+            Single Post
           </Link>
         </div>
       </div>
@@ -488,11 +556,16 @@ export default function CompanyQueuePage() {
                           <Icon size={18} className={colors.text} />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
+                          <div className="flex items-center gap-2 mb-1 flex-wrap">
                             <span className="text-xs font-medium capitalize">{platformType}</span>
                             <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${statusColors.PENDING.bg} ${statusColors.PENDING.text}`}>
                               Pending
                             </span>
+                            {item.contentType && (
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-500/10 text-blue-600 dark:text-blue-400">
+                                {item.contentType}
+                              </span>
+                            )}
                             {item.engagementPrediction && (
                               <span className="text-[10px] text-muted-foreground">
                                 Est. {item.engagementPrediction} engagement
@@ -659,7 +732,7 @@ export default function CompanyQueuePage() {
           </div>
         </div>
       ) : (
-        activeTab !== 'pending' && (
+        activeTab !== 'pending' && filteredQueue.length === 0 && (
           <div className="rounded-xl border border-dashed border-border/60 bg-secondary/10 p-12 text-center">
             <FileText size={48} className="mx-auto text-muted-foreground/30 mb-4" />
             <h3 className="text-sm font-medium text-muted-foreground">No posts found</h3>
@@ -668,13 +741,23 @@ export default function CompanyQueuePage() {
                 ? 'Generate some content to get started'
                 : `No ${activeTab} posts yet`}
             </p>
-            <Link
-              href={`/companies/${companyId}/generate`}
-              className="inline-flex items-center gap-2 mt-4 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90"
-            >
-              <Sparkles size={16} />
-              Generate Content
-            </Link>
+            <div className="flex items-center justify-center gap-3 mt-4">
+              <button
+                onClick={handleGenerateWeeklyContent}
+                disabled={isGeneratingWeekly}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-purple-500 to-pink-500 text-white text-sm font-medium hover:from-purple-600 hover:to-pink-600 disabled:opacity-50"
+              >
+                <Zap size={16} />
+                {isGeneratingWeekly ? 'Generating...' : 'Generate Weekly'}
+              </button>
+              <Link
+                href={`/companies/${companyId}/generate`}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90"
+              >
+                <Sparkles size={16} />
+                Single Post
+              </Link>
+            </div>
           </div>
         )
       )}
