@@ -104,7 +104,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     // Get company goals
     const companyGoals = intel?.primaryGoals || [];
 
-    // Get content type context for AI (now with all 4 arguments)
+    // Get content type context for AI
     const contentTypeContext = getContentTypePromptEnhancement(
       contentType,
       dayOfWeek,
@@ -126,7 +126,6 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       tone,
       companyName: queueItem.company.name,
       companyDescription: queueItem.company.description || undefined,
-      keywords: queueItem.keywords,
       includeHashtags: true,
       brandVoice: intel?.brandVoice || undefined,
       targetAudience: intel?.targetAudience || undefined,
