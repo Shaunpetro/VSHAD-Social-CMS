@@ -4,6 +4,14 @@
     {
       "path": "/api/cron/publish",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/auto-generate",
+      "schedule": "0 18 * * 0"
+    },
+    {
+      "path": "/api/cron/review",
+      "schedule": "0 4 * * 6"
     }
   ]
 }
