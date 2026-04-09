@@ -1,6 +1,6 @@
 // apps/web/src/app/api/cron/review/route.ts
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { PostStatus } from '@prisma/client';
 
@@ -108,16 +108,16 @@ function calculateEngagementRate(post: {
 
 /**
  * Group posts and calculate average engagement by a key
+ * Generic function that accepts any post object with engagement fields
  */
-function analyzeByKey<T extends string | number>(
-  posts: Array<{
-    key: T | null;
-    likes: number;
-    comments: number;
-    shares: number;
-    impressions: number;
-  }>,
-  keyExtractor: (post: typeof posts[0]) => T | null
+function analyzeByKey<T extends string | number, P extends {
+  likes: number;
+  comments: number;
+  shares: number;
+  impressions: number;
+}>(
+  posts: P[],
+  keyExtractor: (post: P) => T | null
 ): Array<{ key: T; metrics: PerformanceMetrics }> {
   const groups: Record<string, { total: number; engagement: number; count: number }> = {};
   
@@ -251,7 +251,7 @@ function generateRecommendations(
   return recommendations;
 }
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   const startTime = Date.now();
   const results: ReviewResult[] = [];
   
@@ -489,7 +489,7 @@ export async function GET(request: NextRequest) {
       } catch (companyError) {
         const errorMsg = companyError instanceof Error ? companyError.message : 'Unknown error';
         result.errors.push(`Review failed: ${errorMsg}`);
-        console.error(`[Review] ❌ Company error for ${company.name}:`, errorMsg);
+        console.error(`[Review] Company error for ${company.name}:`, errorMsg);
       }
       
       results.push(result);
@@ -498,11 +498,12 @@ export async function GET(request: NextRequest) {
     const duration = Date.now() - startTime;
     
     // Calculate totals
+    const companiesWithPosts = results.filter(r => r.postsAnalyzed > 0);
     const totals = {
       companiesReviewed: results.length,
       totalPostsAnalyzed: results.reduce((sum, r) => sum + r.postsAnalyzed, 0),
-      avgEngagementRate: results.length > 0
-        ? Math.round((results.reduce((sum, r) => sum + r.avgEngagementRate, 0) / results.filter(r => r.postsAnalyzed > 0).length) * 100) / 100
+      avgEngagementRate: companiesWithPosts.length > 0
+        ? Math.round((companiesWithPosts.reduce((sum, r) => sum + r.avgEngagementRate, 0) / companiesWithPosts.length) * 100) / 100
         : 0,
       intelligenceUpdates: results.filter(r => r.intelligenceUpdated).length,
       pillarsUpdated: results.reduce((sum, r) => sum + r.pillarsUpdated, 0),
@@ -568,6 +569,6 @@ export async function GET(request: NextRequest) {
 }
 
 // Support POST as well (for manual triggers)
-export async function POST(request: NextRequest) {
-  return GET(request);
+export async function POST() {
+  return GET();
 }
