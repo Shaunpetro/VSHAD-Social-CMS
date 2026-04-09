@@ -1,93 +1,58 @@
-// apps/web/src/app/api/publish/route.ts
+// apps/web/src/app/api/cron/publish/route.ts
 
 import { NextRequest, NextResponse } from 'next/server';
-import { publishPost, publishMultiplePosts, validatePlatformConnection } from '@/lib/publisher';
+import { processScheduledPosts } from '@/lib/scheduler';
 
-// ============================================
-// POST: Publish one or more posts
-// ============================================
+/**
+ * Cron job endpoint for processing scheduled posts
+ * Called by Vercel Cron every minute
+ * 
+ * Schedule: * * * * * (every minute)
+ * 
+ * Flow:
+ * 1. Find all SCHEDULED posts where scheduledFor <= now
+ * 2. Mark as PUBLISHING to prevent duplicate processing
+ * 3. Publish to LinkedIn/Facebook via platform APIs
+ * 4. Update status to PUBLISHED and save externalPostId
+ * 5. If error, mark as FAILED
+ */
+export async function GET(request: NextRequest) {
+  const startTime = Date.now();
+  
+  console.log('[Cron] ========================================');
+  console.log('[Cron] Starting scheduled post processing...');
+  console.log('[Cron] Time:', new Date().toISOString());
 
-export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const { postId, postIds, dryRun = false } = body;
+    const result = await processScheduledPosts();
+    const duration = Date.now() - startTime;
 
-    // Single post publish
-    if (postId) {
-      const result = await publishPost({ postId, dryRun });
+    console.log(`[Cron] Completed in ${duration}ms`);
+    console.log('[Cron] Result:', JSON.stringify(result));
+    console.log('[Cron] ========================================');
 
-      return NextResponse.json({
-        success: result.success,
-        result,
-      }, {
-        status: result.success ? 200 : 400,
-      });
-    }
-
-    // Bulk publish
-    if (postIds && Array.isArray(postIds) && postIds.length > 0) {
-      if (postIds.length > 50) {
-        return NextResponse.json(
-          { error: 'Maximum 50 posts can be published at once' },
-          { status: 400 }
-        );
-      }
-
-      const { results, summary } = await publishMultiplePosts(postIds);
-
-      return NextResponse.json({
-        success: summary.failed === 0,
-        results,
-        summary,
-      });
-    }
-
-    return NextResponse.json(
-      { error: 'postId or postIds is required' },
-      { status: 400 }
-    );
+    return NextResponse.json({
+      success: true,
+      timestamp: new Date().toISOString(),
+      duration: `${duration}ms`,
+      result,
+    });
   } catch (error) {
-    console.error('Publish API error:', error);
+    const duration = Date.now() - startTime;
+    console.error('[Cron] Failed after', duration, 'ms:', error);
+
     return NextResponse.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to publish',
+        error: error instanceof Error ? error.message : 'Unknown error',
+        timestamp: new Date().toISOString(),
       },
       { status: 500 }
     );
   }
 }
 
-// ============================================
-// GET: Validate platform connection before publishing
-// ============================================
-
-export async function GET(request: NextRequest) {
-  try {
-    const platformId = request.nextUrl.searchParams.get('platformId');
-
-    if (!platformId) {
-      return NextResponse.json(
-        { error: 'platformId is required' },
-        { status: 400 }
-      );
-    }
-
-    const validation = await validatePlatformConnection(platformId);
-
-    return NextResponse.json({
-      valid: validation.valid,
-      platform: validation.platform,
-      error: validation.error,
-    });
-  } catch (error) {
-    console.error('Platform validation error:', error);
-    return NextResponse.json(
-      {
-        valid: false,
-        error: error instanceof Error ? error.message : 'Validation failed',
-      },
-      { status: 500 }
-    );
-  }
+// Support POST as well (for manual triggers)
+export async function POST(request: NextRequest) {
+  return GET(request);
 }
