@@ -10,6 +10,17 @@ interface RouteParams {
   params: Promise<{ id: string }>;
 }
 
+// Valid tone types for the AI generator
+type ToneType = 'professional' | 'casual' | 'friendly' | 'authoritative';
+const VALID_TONES: ToneType[] = ['professional', 'casual', 'friendly', 'authoritative'];
+
+function validateTone(tone: string | null | undefined): ToneType {
+  if (tone && VALID_TONES.includes(tone as ToneType)) {
+    return tone as ToneType;
+  }
+  return 'professional';
+}
+
 /**
  * POST /api/queue/[id]/regenerate
  * Regenerate content for a queue item using AI
@@ -71,7 +82,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     const intel = queueItem.company.intelligence;
     const contentType = (overrideType || queueItem.contentType || 'educational') as ContentType;
-    const tone = overrideTone || queueItem.tone || intel?.defaultTone || 'professional';
+    
+    // Validate and get tone
+    const toneInput = overrideTone || queueItem.tone || intel?.defaultTone;
+    const tone = validateTone(toneInput);
 
     // Build regeneration context
     const pillar = intel?.contentPillars.find(p => p.name === queueItem.pillar);
