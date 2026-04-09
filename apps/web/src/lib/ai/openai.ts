@@ -305,8 +305,7 @@ function cleanGeneratedContent(content: string): string {
     // Remove any "Post:" or similar labels
     .replace(/^(Post|Content|Caption|Tweet|Update):\s*/i, "")
     // Remove trailing explanations
-    .replace(/\n\n(This post|I've|I hope|Let me know|Feel free).*$/is, "")
-    .trim();
+    .replace(/\n\n(This post|I've|I hope|Let me know|Feel free)[\s\S]*$/i, "")
 }
 
 export async function regenerateContent(
