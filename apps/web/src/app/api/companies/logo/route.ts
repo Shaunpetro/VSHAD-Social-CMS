@@ -1,9 +1,7 @@
 // apps/web/src/app/api/companies/logo/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
-import { writeFile, mkdir } from 'fs/promises'
-import { existsSync } from 'fs'
-import path from 'path'
+import { put, del } from '@vercel/blob'
 import { randomUUID } from 'crypto'
 
 export async function POST(request: NextRequest) {
@@ -58,22 +56,25 @@ export async function POST(request: NextRequest) {
     }
 
     // Create unique filename
-    const filename = `${companyId}-${randomUUID()}.${ext}`
-    
-    // Ensure uploads directory exists
-    const uploadsDir = path.join(process.cwd(), 'public', 'uploads', 'logos')
-    if (!existsSync(uploadsDir)) {
-      await mkdir(uploadsDir, { recursive: true })
+    const filename = `logos/${companyId}-${randomUUID()}.${ext}`
+
+    // Delete old logo from Blob if exists
+    if (company.logoUrl && company.logoUrl.includes('vercel-storage.com')) {
+      try {
+        await del(company.logoUrl)
+      } catch (deleteError) {
+        // Ignore delete errors - old file might not exist
+        console.log('Could not delete old logo:', deleteError)
+      }
     }
 
-    // Save file
-    const bytes = await file.arrayBuffer()
-    const buffer = Buffer.from(bytes)
-    const filepath = path.join(uploadsDir, filename)
-    await writeFile(filepath, buffer)
+    // Upload to Vercel Blob
+    const blob = await put(filename, file, {
+      access: 'public',
+      addRandomSuffix: false, // We already added UUID
+    })
 
-    // Generate public URL
-    const logoUrl = `/uploads/logos/${filename}`
+    const logoUrl = blob.url
 
     // Update company in database
     await prisma.company.update({
@@ -81,11 +82,60 @@ export async function POST(request: NextRequest) {
       data: { logoUrl }
     })
 
-    return NextResponse.json({ logoUrl })
+    return NextResponse.json({ logoUrl, url: logoUrl })
   } catch (error) {
     console.error('Error uploading logo:', error)
     return NextResponse.json(
-      { error: 'Failed to upload logo' },
+      { error: 'Failed to upload logo. Please try again.' },
+      { status: 500 }
+    )
+  }
+}
+
+// Optional: DELETE endpoint to remove logo
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url)
+    const companyId = searchParams.get('companyId')
+
+    if (!companyId) {
+      return NextResponse.json(
+        { error: 'No company ID provided' },
+        { status: 400 }
+      )
+    }
+
+    const company = await prisma.company.findUnique({
+      where: { id: companyId }
+    })
+
+    if (!company) {
+      return NextResponse.json(
+        { error: 'Company not found' },
+        { status: 404 }
+      )
+    }
+
+    // Delete from Blob if exists
+    if (company.logoUrl && company.logoUrl.includes('vercel-storage.com')) {
+      try {
+        await del(company.logoUrl)
+      } catch (deleteError) {
+        console.log('Could not delete logo from blob:', deleteError)
+      }
+    }
+
+    // Update company in database
+    await prisma.company.update({
+      where: { id: companyId },
+      data: { logoUrl: null }
+    })
+
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error('Error deleting logo:', error)
+    return NextResponse.json(
+      { error: 'Failed to delete logo' },
       { status: 500 }
     )
   }
