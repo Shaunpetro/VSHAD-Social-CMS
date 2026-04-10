@@ -328,4 +328,5 @@ async function calculateIntelligenceScore(
   // 5. Industry benchmark (10 points)
   if (intelligence.industryBenchmarks) score += 10;
 
-  return Math.min(100, score)
+  return Math.min(100, score);
+}
