@@ -1,29 +1,43 @@
 // apps/web/src/app/api/media/[id]/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { del } from "@vercel/blob";
 
-// GET - Fetch single media
+// GET - Get single media
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params;
-    
+
     const media = await prisma.media.findUnique({
       where: { id },
       include: {
         company: {
-          select: { id: true, name: true }
-        }
-      }
+          select: {
+            id: true,
+            name: true,
+            logoUrl: true,
+          },
+        },
+        postMedia: {
+          include: {
+            post: {
+              select: {
+                id: true,
+                content: true,
+                status: true,
+                scheduledFor: true,
+              },
+            },
+          },
+        },
+      },
     });
 
     if (!media) {
-      return NextResponse.json(
-        { error: "Media not found" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Media not found" }, { status: 404 });
     }
 
     return NextResponse.json(media);
@@ -36,22 +50,32 @@ export async function GET(
   }
 }
 
-// PUT - Update media (alt text, etc.)
-export async function PUT(
+// PATCH - Update media metadata
+export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params;
     const body = await request.json();
-    
-    const { altText, filename } = body;
+
+    const { pillarIds, contentTypes, tags, altText } = body;
 
     const media = await prisma.media.update({
       where: { id },
       data: {
+        ...(pillarIds !== undefined && { pillarIds }),
+        ...(contentTypes !== undefined && { contentTypes }),
+        ...(tags !== undefined && { tags }),
         ...(altText !== undefined && { altText }),
-        ...(filename !== undefined && { filename }),
+      },
+      include: {
+        company: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
       },
     });
 
@@ -72,21 +96,27 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    
-    // First check if media is used in any posts
-    const usedInPosts = await prisma.postMedia.findFirst({
-      where: { mediaId: id }
+
+    // Get media to get blob URL
+    const media = await prisma.media.findUnique({
+      where: { id },
     });
 
-    if (usedInPosts) {
-      return NextResponse.json(
-        { error: "Cannot delete media that is used in posts" },
-        { status: 400 }
-      );
+    if (!media) {
+      return NextResponse.json({ error: "Media not found" }, { status: 404 });
     }
 
+    // Delete from Vercel Blob
+    try {
+      await del(media.url);
+    } catch (blobError) {
+      console.error("Failed to delete from blob storage:", blobError);
+      // Continue with database deletion even if blob deletion fails
+    }
+
+    // Delete from database (cascade will handle postMedia)
     await prisma.media.delete({
-      where: { id }
+      where: { id },
     });
 
     return NextResponse.json({ success: true });

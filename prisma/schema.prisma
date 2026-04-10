@@ -109,25 +109,36 @@ model ContentSettings {
 }
 
 // ============================================
-// MEDIA LIBRARY
+// MEDIA LIBRARY (ENHANCED)
 // ============================================
 
 model Media {
-  id        String    @id @default(cuid())
+  id        String @id @default(cuid())
   companyId String
 
-  filename    String
-  url         String
+  filename     String
+  url          String
   thumbnailUrl String?
-  type        MediaType
-  mimeType    String?
-  size        Int
-  width       Int?
-  height      Int?
-  altText     String?
+  type         MediaType
+  mimeType     String?
+  size         Int
+  width        Int?
+  height       Int?
+  altText      String?
 
-  company     Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  postMedia   PostMedia[]
+  // Pillar & Tag associations
+  pillarIds    String[]  // References to ContentPillar IDs
+  tags         String[]  // Custom tags (e.g., "pasta", "team photo")
+
+  // Content type hints (educational, engagement, social_proof, promotional)
+  contentTypes String[]
+
+  // Usage tracking
+  usageCount Int       @default(0)
+  lastUsedAt DateTime?
+
+  company   Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  postMedia PostMedia[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -150,11 +161,11 @@ model GeneratedPost {
   companyId  String
   platformId String
 
-  title      String?
-  content    String
-  hashtags   String[]
+  title    String?
+  content  String
+  hashtags String[]
 
-  postMedia  PostMedia[]
+  postMedia PostMedia[]
 
   scheduledFor DateTime?
   publishedAt  DateTime?
@@ -171,7 +182,7 @@ model GeneratedPost {
 
   pillar        String?
   contentType   String?
-  includesHumor Boolean   @default(false)
+  includesHumor Boolean @default(false)
   hook          String?
 
   externalPostId  String?
@@ -208,8 +219,8 @@ model PostMedia {
   mediaId String
   order   Int    @default(0)
 
-  post    GeneratedPost @relation(fields: [postId], references: [id], onDelete: Cascade)
-  media   Media         @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+  post  GeneratedPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  media Media         @relation(fields: [mediaId], references: [id], onDelete: Cascade)
 
   @@unique([postId, mediaId])
   @@index([postId])
@@ -230,7 +241,7 @@ enum PostStatus {
 // ============================================
 
 model BulkSchedule {
-  id        String   @id @default(cuid())
+  id        String @id @default(cuid())
   companyId String
 
   name        String?
@@ -240,7 +251,7 @@ model BulkSchedule {
   timesPerDay String[]
   platforms   String[]
 
-  status    BulkScheduleStatus @default(ACTIVE)
+  status BulkScheduleStatus @default(ACTIVE)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -259,8 +270,8 @@ enum BulkScheduleStatus {
 // ============================================
 
 model CompanyIntelligence {
-  id        String @id @default(cuid())
-  companyId String @unique
+  id        String  @id @default(cuid())
+  companyId String  @unique
   company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   brandPersonality    String[]
@@ -307,8 +318,8 @@ model CompanyIntelligence {
   lastIntelligenceUpdate DateTime?
   weeklyPostTarget       Int?
 
-  competitors     Competitor[]
-  competitorGaps  String[]
+  competitors    Competitor[]
+  competitorGaps String[]
 
   industryBenchmarks Json?
   industryTrends     Json?
@@ -321,7 +332,7 @@ model CompanyIntelligence {
 }
 
 model ContentPillar {
-  id             String @id @default(cuid())
+  id             String              @id @default(cuid())
   intelligenceId String
   intelligence   CompanyIntelligence @relation(fields: [intelligenceId], references: [id], onDelete: Cascade)
 
@@ -349,7 +360,7 @@ model ContentPillar {
 }
 
 model Competitor {
-  id             String @id @default(cuid())
+  id             String              @id @default(cuid())
   intelligenceId String
   intelligence   CompanyIntelligence @relation(fields: [intelligenceId], references: [id], onDelete: Cascade)
 
@@ -429,9 +440,9 @@ model ContentQueueItem {
   suggestedMedia       String?
   generationContext    Json?
 
-  status       QueueStatus @default(PENDING)
-  reviewedAt   DateTime?
-  reviewNotes  String?
+  status      QueueStatus @default(PENDING)
+  reviewedAt  DateTime?
+  reviewNotes String?
 
   generatedPostId String?
 
