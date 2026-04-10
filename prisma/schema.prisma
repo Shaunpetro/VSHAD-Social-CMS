@@ -99,7 +99,6 @@ model ContentSettings {
   brandVoice      String?
   avoidTopics     String[]
 
-  // Default posting times (stored as "HH:MM" strings)
   defaultPostingTimes String[] @default(["09:00", "14:00", "18:00"])
   timezone            String   @default("Africa/Johannesburg")
 
@@ -122,7 +121,7 @@ model Media {
   thumbnailUrl String?
   type        MediaType
   mimeType    String?
-  size        Int         // bytes
+  size        Int
   width       Int?
   height      Int?
   altText     String?
@@ -151,48 +150,42 @@ model GeneratedPost {
   companyId  String
   platformId String
 
-  // Content
   title      String?
   content    String
   hashtags   String[]
 
-  // Media attachments (many-to-many)
   postMedia  PostMedia[]
 
-  // Scheduling
   scheduledFor DateTime?
   publishedAt  DateTime?
   status       PostStatus @default(DRAFT)
 
-  // Scheduling metadata
   isPartOfBulk   Boolean @default(false)
   bulkScheduleId String?
 
-  // Generation metadata
   generatedBy String  @default("groq-llama-3.3")
   prompt      String?
   topic       String?
   tone        String?
   iteration   Int     @default(1)
 
-  // v3: Content Intelligence metadata
-  pillar        String?   // Which content pillar this belongs to
-  contentType   String?   // educational, promotional, engagement, etc.
+  pillar        String?
+  contentType   String?
   includesHumor Boolean   @default(false)
-  hook          String?   // The attention-grabbing opening
+  hook          String?
 
-  // External post tracking (for analytics sync)
-  externalPostId  String?   // Facebook or LinkedIn post ID
-  externalPostUrl String?   // Direct URL to the post
-  lastSyncedAt    DateTime? // When analytics were last fetched
+  externalPostId  String?
+  externalPostUrl String?
+  lastSyncedAt    DateTime?
 
-  // Analytics (populated after publishing)
   likes       Int @default(0)
   comments    Int @default(0)
   shares      Int @default(0)
   impressions Int @default(0)
 
-  // Relations
+  engagementRate   Float?
+  performanceScore Float?
+
   company  Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
   platform Platform @relation(fields: [platformId], references: [id], onDelete: Cascade)
 
@@ -205,14 +198,15 @@ model GeneratedPost {
   @@index([bulkScheduleId])
   @@index([externalPostId])
   @@index([pillar])
+  @@index([contentType])
+  @@index([publishedAt])
 }
 
-// Junction table for Post-Media many-to-many
 model PostMedia {
   id      String @id @default(cuid())
   postId  String
   mediaId String
-  order   Int    @default(0)  // For ordering multiple media
+  order   Int    @default(0)
 
   post    GeneratedPost @relation(fields: [postId], references: [id], onDelete: Cascade)
   media   Media         @relation(fields: [mediaId], references: [id], onDelete: Cascade)
@@ -243,8 +237,8 @@ model BulkSchedule {
   startDate   DateTime
   endDate     DateTime
   postsCount  Int
-  timesPerDay String[]  // ["09:00", "14:00"]
-  platforms   String[]  // ["LINKEDIN", "INSTAGRAM"]
+  timesPerDay String[]
+  platforms   String[]
 
   status    BulkScheduleStatus @default(ACTIVE)
 
@@ -269,54 +263,56 @@ model CompanyIntelligence {
   companyId String @unique
   company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
-  // Brand Identity
-  brandPersonality    String[]  // e.g., ["innovative", "approachable", "expert"]
-  brandVoice          String?   // Detailed voice description
-  uniqueSellingPoints String[]  // What makes the company unique
-  targetAudience      String?   // Description of ideal audience
+  brandPersonality    String[]
+  brandVoice          String?
+  uniqueSellingPoints String[]
+  targetAudience      String?
 
-  // Goals
-  primaryGoals   String[]  // e.g., ["brand awareness", "lead generation"]
-  communityFocus String?   // Community building strategy
+  primaryGoals   String[]
+  communityFocus String?
 
-  // Content Pillars
   contentPillars ContentPillar[]
 
-  // Keywords & SEO
   primaryKeywords  String[]
   industryHashtags String[]
   brandedHashtags  String[]
 
-  // Tone & Humor Settings
   defaultTone     String   @default("professional")
   humorEnabled    Boolean  @default(true)
-  humorStyle      String?  // e.g., "witty", "playful", "sarcastic-light"
-  humorDays       String[] // Days when humor is OK: ["friday", "saturday"]
-  humorTimes      String[] // Times when humor works: ["12:00-14:00", "17:00-19:00"]
-  dayToneSchedule Json?    // { "monday": "motivational", "friday": "casual" }
+  humorStyle      String?
+  humorDays       String[]
+  humorTimes      String[]
+  dayToneSchedule Json?
 
-  // Posting Preferences
   postsPerWeek   Int      @default(4)
-  preferredDays  String[] // ["monday", "wednesday", "friday"]
-  preferredTimes Json?    // { "monday": ["09:00", "14:00"], "friday": ["10:00"] }
+  preferredDays  String[]
+  preferredTimes Json?
   timezone       String   @default("Africa/Johannesburg")
   autoApprove    Boolean  @default(false)
 
-  // Learned from Performance (AI updates these)
   learnedBestDays    String[]
   learnedBestTimes   Json?
-  learnedBestPillars Json?    // { "pillarName": avgEngagementRate }
+  learnedBestPillars Json?
   avoidTopics        String[]
 
-  // Competitor Intelligence
+  intelligenceScore      Int       @default(0)
+  engagementTrend        String?
+  avgEngagementRate      Float?
+  topPerformingTypes     Json?
+  topPerformingTopics    Json?
+  topPerformingHooks     Json?
+  topicUsageHistory      Json?
+  contentTypePerformance Json?
+  platformPerformance    Json?
+  lastIntelligenceUpdate DateTime?
+  weeklyPostTarget       Int?
+
   competitors     Competitor[]
-  competitorGaps  String[]  // Opportunities competitors are missing
+  competitorGaps  String[]
 
-  // Industry Data
-  industryBenchmarks Json?  // Cached from IndustryBenchmark
-  industryTrends     Json?  // Current trends in the industry
+  industryBenchmarks Json?
+  industryTrends     Json?
 
-  // Status
   onboardingCompleted Boolean   @default(false)
   lastResearchSync    DateTime?
 
@@ -329,19 +325,21 @@ model ContentPillar {
   intelligenceId String
   intelligence   CompanyIntelligence @relation(fields: [intelligenceId], references: [id], onDelete: Cascade)
 
-  name         String   // e.g., "Industry Insights", "Behind the Scenes"
+  name         String
   description  String?
-  topics       String[] // Specific topics under this pillar
-  keywords     String[] // Keywords associated with this pillar
-  contentTypes String[] // ["educational", "promotional", "engagement"]
+  topics       String[]
+  keywords     String[]
+  contentTypes String[]
 
-  // Scheduling preferences
-  frequencyWeight Float    @default(1.0)  // Higher = more frequent
-  preferredDays   String[] // Best days for this pillar
+  frequencyWeight Float    @default(1.0)
+  preferredDays   String[]
 
-  // Performance tracking
   totalPosts    Int    @default(0)
   avgEngagement Float?
+
+  lastUsed           DateTime?
+  performanceTrend   String?
+  bestPerformingType String?
 
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
@@ -360,8 +358,7 @@ model Competitor {
   facebookUrl String?
   websiteUrl  String?
 
-  // Analysis data
-  postingFrequency String?  // e.g., "3-4 posts/week"
+  postingFrequency String?
   avgEngagement    Float?
   followerCount    Int?
   topContentTypes  String[]
@@ -380,29 +377,26 @@ model IndustryBenchmark {
   id       String @id @default(cuid())
   industry String @unique
 
-  // Posting recommendations
   recommendedPostsPerWeek Int      @default(4)
   optimalPostsMin         Int      @default(3)
   optimalPostsMax         Int      @default(5)
   bestDays                String[]
-  bestTimes               Json     // { "linkedin": ["09:00", "12:00"], "facebook": ["12:00", "19:00"] }
+  bestTimes               Json
 
-  // Platform priorities
-  platformPriority Json  // { "linkedin": 1, "facebook": 2, "instagram": 3 }
+  platformPriority Json
 
-  // Content suggestions
-  suggestedThemes Json  // { "themes": ["industry news", "tips"], "seasonal": {...} }
+  suggestedThemes Json
 
-  // SEO & Hashtags
   topHashtags String[]
   seoKeywords String[]
 
-  // Tone recommendations
   recommendedTone  String  @default("professional")
   humorAppropriate Boolean @default(true)
 
-  // Benchmarks
   avgEngagementRate Float?
+
+  contentMixRecommendation Json?
+  growthBenchmarks         Json?
 
   lastUpdated DateTime @default(now())
   createdAt   DateTime @default(now())
@@ -415,35 +409,30 @@ model ContentQueueItem {
   companyId String
   company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
-  // Generated content
   content  String
   hashtags String[]
   keywords String[]
 
-  // Platform & Scheduling
   platformId    String
   platform      Platform @relation(fields: [platformId], references: [id])
   suggestedDate DateTime
-  suggestedTime String   // "09:00"
+  suggestedTime String
 
-  // Content metadata
   pillar        String?
-  contentType   String?  // educational, promotional, engagement, etc.
+  contentType   String?
   tone          String?
   includesHumor Boolean  @default(false)
-  hook          String?  // The attention-grabbing opening line
+  hook          String?
 
-  // AI predictions
-  engagementPrediction String?  // "high", "medium", "low"
-  suggestedMedia       String?  // AI suggestion for media type
-  generationContext    Json?    // Why AI chose this content
+  engagementPrediction String?
+  predictedScore       Float?
+  suggestedMedia       String?
+  generationContext    Json?
 
-  // Review workflow
   status       QueueStatus @default(PENDING)
   reviewedAt   DateTime?
   reviewNotes  String?
 
-  // Link to actual post (after approval)
   generatedPostId String?
 
   createdAt DateTime @default(now())
@@ -452,6 +441,7 @@ model ContentQueueItem {
   @@index([companyId, status])
   @@index([platformId])
   @@index([suggestedDate])
+  @@index([contentType])
 }
 
 enum QueueStatus {
