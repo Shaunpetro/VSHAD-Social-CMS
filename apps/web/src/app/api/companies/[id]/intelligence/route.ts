@@ -14,10 +14,10 @@ import { prisma } from '@/lib/db';
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const companyId = params.id;
+    const { id: companyId } = await params;
 
     if (!companyId) {
       return NextResponse.json(
@@ -181,10 +181,10 @@ export async function GET(
  */
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const companyId = params.id;
+    const { id: companyId } = await params;
     const updates = await request.json();
 
     if (!companyId) {
@@ -233,7 +233,7 @@ export async function PATCH(
     ];
 
     // Filter to only allowed fields
-    const filteredUpdates: Record<string, any> = {};
+    const filteredUpdates: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(updates)) {
       if (allowedFields.includes(key)) {
         filteredUpdates[key] = value;
@@ -248,7 +248,7 @@ export async function PATCH(
     }
 
     // Update intelligence
-    const updated = await prisma.companyIntelligence.update({
+    await prisma.companyIntelligence.update({
       where: { id: existing.id },
       data: filteredUpdates,
     });
@@ -273,7 +273,17 @@ export async function PATCH(
 
 async function calculateIntelligenceScore(
   companyId: string,
-  intelligence: any
+  intelligence: {
+    primaryGoals: string[];
+    uniqueSellingPoints: string[];
+    targetAudience: string | null;
+    brandPersonality: string[];
+    contentPillars?: { topics?: string[] }[];
+    learnedBestDays?: string[];
+    topPerformingTypes?: unknown;
+    avgEngagementRate?: number | null;
+    industryBenchmarks?: unknown;
+  }
 ): Promise<number> {
   let score = 0;
 
@@ -289,7 +299,7 @@ async function calculateIntelligenceScore(
   else if (pillarCount >= 1) score += 5;
 
   const totalTopics = intelligence.contentPillars?.reduce(
-    (sum: number, p: any) => sum + (p.topics?.length || 0),
+    (sum: number, p) => sum + (p.topics?.length || 0),
     0
   ) || 0;
   if (totalTopics >= 10) score += 10;
@@ -321,8 +331,8 @@ async function calculateIntelligenceScore(
   else if (publishedPosts >= 5) score += 5;
 
   // Check if we have learned data
-  if (intelligence.learnedBestDays?.length > 0) score += 5;
-  if (intelligence.topPerformingTypes && Object.keys(intelligence.topPerformingTypes).length > 0) score += 5;
+  if (intelligence.learnedBestDays && intelligence.learnedBestDays.length > 0) score += 5;
+  if (intelligence.topPerformingTypes && typeof intelligence.topPerformingTypes === 'object' && Object.keys(intelligence.topPerformingTypes as object).length > 0) score += 5;
   if (intelligence.avgEngagementRate && intelligence.avgEngagementRate > 0) score += 5;
 
   // 5. Industry benchmark (10 points)
