@@ -15,6 +15,7 @@ import {
 } from '@/lib/ai/intelligence-engine';
 import {
   getContentTypePromptEnhancement,
+  type FunnelStage,
 } from '@/lib/ai/content-strategy';
 
 /**
@@ -49,6 +50,21 @@ interface GenerationResult {
   contentMix: Record<string, number>;
   errors: string[];
 }
+
+// Funnel stage mapping
+const CONTENT_TYPE_TO_FUNNEL: Record<string, FunnelStage> = {
+  educational: 'awareness',
+  tips: 'awareness',
+  news: 'awareness',
+  motivational: 'awareness',
+  engagement: 'interest',
+  community: 'interest',
+  behindTheScenes: 'interest',
+  caseStudy: 'consideration',
+  testimonial: 'consideration',
+  socialProof: 'consideration',
+  promotional: 'conversion',
+};
 
 export async function POST(request: NextRequest) {
   const startTime = Date.now();
@@ -202,8 +218,8 @@ export async function POST(request: NextRequest) {
         topPerformingTypes: intel.topPerformingTypes as Record<string, number> | null,
         topPerformingTopics: intel.topPerformingTopics as Record<string, number> | null,
         topicUsageHistory: intel.topicUsageHistory as Record<string, { lastUsed: string; count: number }> | null,
-        contentTypePerformance: intel.contentTypePerformance as Record<string, any> | null,
-        platformPerformance: intel.platformPerformance as Record<string, any> | null,
+        contentTypePerformance: intel.contentTypePerformance as Record<string, unknown> | null,
+        platformPerformance: intel.platformPerformance as Record<string, unknown> | null,
         learnedBestDays: intel.learnedBestDays,
         learnedBestTimes: intel.learnedBestTimes as Record<string, string[]> | null,
         learnedBestPillars: intel.learnedBestPillars as Record<string, number> | null,
@@ -255,7 +271,7 @@ export async function POST(request: NextRequest) {
     const slots = contentPlan.schedule.slots.slice(0, targetPostCount);
 
     // If manual topics provided, distribute them across slots
-    let topicQueue = [...manualTopics];
+    const topicQueue = [...manualTopics];
 
     // Initialize result tracking
     const result: GenerationResult = {
@@ -303,11 +319,14 @@ export async function POST(request: NextRequest) {
           intel.humorDays
         );
 
+        // Get funnel stage for content type
+        const funnelStage = getFunnelStage(slot.contentType);
+
         // Get content type context for AI
         const contentTypeContext = getContentTypePromptEnhancement(
-          slot.contentType as any,
+          slot.contentType as Parameters<typeof getContentTypePromptEnhancement>[0],
           slot.dayOfWeek,
-          getFunnelStage(slot.contentType),
+          funnelStage,
           intel.primaryGoals
         );
 
@@ -405,7 +424,7 @@ export async function POST(request: NextRequest) {
               predictedScore: prediction.score,
               generationContext: {
                 contentType: slot.contentType,
-                funnelStage: getFunnelStage(slot.contentType),
+                funnelStage,
                 dayPsychology: slot.reason,
                 topic: topic || slot.topic,
                 platform: targetPlatform.type,
@@ -434,11 +453,11 @@ export async function POST(request: NextRequest) {
 
         // Update topic usage history
         if (topic) {
-          const currentHistory = (intel.topicUsageHistory as Record<string, any>) || {};
+          const currentHistory = (intel.topicUsageHistory as Record<string, unknown>) || {};
           const topicKey = topic.toLowerCase();
           currentHistory[topicKey] = {
             lastUsed: new Date().toISOString(),
-            count: (currentHistory[topicKey]?.count || 0) + 1,
+            count: ((currentHistory[topicKey] as { count?: number })?.count || 0) + 1,
           };
 
           await prisma.companyIntelligence.update({
@@ -531,21 +550,8 @@ function determineToneForSlot(
   return defaultTone;
 }
 
-function getFunnelStage(contentType: string): string {
-  const mapping: Record<string, string> = {
-    educational: 'awareness',
-    tips: 'awareness',
-    news: 'awareness',
-    motivational: 'awareness',
-    engagement: 'interest',
-    community: 'interest',
-    behindTheScenes: 'interest',
-    caseStudy: 'consideration',
-    testimonial: 'consideration',
-    socialProof: 'consideration',
-    promotional: 'conversion',
-  };
-  return mapping[contentType] || 'awareness';
+function getFunnelStage(contentType: string): FunnelStage {
+  return CONTENT_TYPE_TO_FUNNEL[contentType] || 'awareness';
 }
 
 function findMatchingPillar(
