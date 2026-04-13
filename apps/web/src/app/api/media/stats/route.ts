@@ -2,6 +2,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { Prisma } from "@prisma/client";
 
 // GET /api/media/stats - Get media usage statistics
 export async function GET(request: NextRequest) {
@@ -20,11 +21,21 @@ export async function GET(request: NextRequest) {
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
-    // Build base where clause
-    const baseWhere: Record<string, unknown> = {};
+    // Build base where clause with proper Prisma types
+    const baseWhere: Prisma.MediaWhereInput = {};
     if (companyId) {
       baseWhere.companyId = companyId;
     }
+
+    // Build the available where clause with proper null handling
+    const availableWhere: Prisma.MediaWhereInput = {
+      ...baseWhere,
+      isUsed: false,
+      OR: [
+        { expiresAt: { equals: null } },
+        { expiresAt: { gt: now } },
+      ] as Prisma.MediaWhereInput[],
+    };
 
     // Get all counts in parallel
     const [
@@ -49,16 +60,7 @@ export async function GET(request: NextRequest) {
       prisma.media.count({ where: baseWhere }),
 
       // Available (not used, not expired)
-      prisma.media.count({
-        where: {
-          ...baseWhere,
-          isUsed: false,
-          OR: [
-            { expiresAt: null },
-            { expiresAt: { gt: now } },
-          ],
-        },
-      }),
+      prisma.media.count({ where: availableWhere }),
 
       // Used
       prisma.media.count({
