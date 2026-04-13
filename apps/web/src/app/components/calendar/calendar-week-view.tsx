@@ -26,6 +26,7 @@ interface Post {
   comments?: number;
   shares?: number;
   impressions?: number;
+  companyId: string;
   platform: {
     id: string;
     type: string;
