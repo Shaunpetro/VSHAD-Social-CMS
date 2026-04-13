@@ -1,6 +1,7 @@
 // apps/web/src/lib/media/auto-select.ts
 
 import { prisma } from "@/lib/db";
+import { Prisma } from "@prisma/client";
 
 // ============================================
 // TYPES
@@ -184,17 +185,17 @@ export async function shouldIncludeMedia(
 export async function getAvailableMediaCount(companyId: string): Promise<number> {
   const now = new Date();
 
-  return prisma.media.count({
-    where: {
-      companyId,
-      isUsed: false,
-      autoSelect: true,
-      OR: [
-        { expiresAt: null },
-        { expiresAt: { gt: now } },
-      ],
-    },
-  });
+  const availableWhere: Prisma.MediaWhereInput = {
+    companyId,
+    isUsed: false,
+    autoSelect: true,
+    OR: [
+      { expiresAt: { equals: null } },
+      { expiresAt: { gt: now } },
+    ] as Prisma.MediaWhereInput[],
+  };
+
+  return prisma.media.count({ where: availableWhere });
 }
 
 /**
@@ -203,16 +204,18 @@ export async function getAvailableMediaCount(companyId: string): Promise<number>
 export async function getAvailableMedia(companyId: string): Promise<MediaItem[]> {
   const now = new Date();
 
+  const availableWhere: Prisma.MediaWhereInput = {
+    companyId,
+    isUsed: false,
+    autoSelect: true,
+    OR: [
+      { expiresAt: { equals: null } },
+      { expiresAt: { gt: now } },
+    ] as Prisma.MediaWhereInput[],
+  };
+
   const media = await prisma.media.findMany({
-    where: {
-      companyId,
-      isUsed: false,
-      autoSelect: true,
-      OR: [
-        { expiresAt: null },
-        { expiresAt: { gt: now } },
-      ],
-    },
+    where: availableWhere,
     orderBy: [
       { priority: "desc" },
       { createdAt: "desc" },
