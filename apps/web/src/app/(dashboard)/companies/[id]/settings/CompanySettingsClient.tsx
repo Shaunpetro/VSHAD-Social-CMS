@@ -18,6 +18,25 @@ import {
   Target
 } from 'lucide-react'
 import LogoCropper from '@/components/ui/LogoCropper'
+import CurrentAnalysisCard from '@/components/intelligence/CurrentAnalysisCard'
+
+interface Intelligence {
+  id: string
+  dataSources: unknown
+  lastAnalyzedAt: string | null
+  analysisVersion: number
+  aiConfidenceScore: number | null
+  extractedIndustries: unknown
+  extractedServices: unknown
+  extractedUSPs: unknown
+  extractedAudience: unknown
+  primaryBusinessGoal: string | null
+  industriesConfirmed: boolean
+  servicesConfirmed: boolean
+  uspsConfirmed: boolean
+  audienceConfirmed: boolean
+  voiceConfirmed: boolean
+}
 
 interface Company {
   id: string
@@ -26,7 +45,7 @@ interface Company {
   website: string | null
   description: string | null
   industry: string | null
-  intelligence: any | null
+  intelligence: Intelligence | null
   platforms: {
     id: string
     type: string
@@ -93,7 +112,7 @@ export default function CompanySettingsClient({ company, industries }: CompanySe
     try {
       const formData = new FormData()
       formData.append('file', croppedBlob, 'logo.png')
-      formData.append('companyId', company.id)  // ✅ ADDED THIS LINE
+      formData.append('companyId', company.id)
 
       const res = await fetch('/api/companies/logo', {
         method: 'POST',
@@ -105,8 +124,8 @@ export default function CompanySettingsClient({ company, industries }: CompanySe
         throw new Error(errorData.error || 'Failed to upload logo')
       }
 
-      const { logoUrl: newLogoUrl } = await res.json()  // ✅ FIXED: was 'url'
-      setLogoUrl(newLogoUrl)  // ✅ FIXED
+      const { logoUrl: newLogoUrl } = await res.json()
+      setLogoUrl(newLogoUrl)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to upload logo')
     } finally {
@@ -154,9 +173,37 @@ export default function CompanySettingsClient({ company, industries }: CompanySe
     }
   }
 
+  const handleReanalyzeComplete = () => {
+    router.refresh()
+  }
+
   const getInitials = (n: string) => {
     return n.split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase()
   }
+
+  // Transform intelligence data for the card
+  const intelligenceData = company.intelligence ? {
+    id: company.intelligence.id,
+    dataSources: company.intelligence.dataSources as {
+      websiteUrl?: string
+      linkedinUrl?: string
+      pdfUrl?: string
+      manualDescription?: string
+    } | null,
+    lastAnalyzedAt: company.intelligence.lastAnalyzedAt,
+    analysisVersion: company.intelligence.analysisVersion,
+    aiConfidenceScore: company.intelligence.aiConfidenceScore,
+    extractedIndustries: company.intelligence.extractedIndustries as Array<{ name: string; code: string; confidence: number }> | null,
+    extractedServices: company.intelligence.extractedServices as Array<{ name: string; category: string }> | null,
+    extractedUSPs: company.intelligence.extractedUSPs as Array<{ point: string }> | null,
+    extractedAudience: company.intelligence.extractedAudience as { segments: Array<{ name: string }> } | null,
+    primaryBusinessGoal: company.intelligence.primaryBusinessGoal,
+    industriesConfirmed: company.intelligence.industriesConfirmed,
+    servicesConfirmed: company.intelligence.servicesConfirmed,
+    uspsConfirmed: company.intelligence.uspsConfirmed,
+    audienceConfirmed: company.intelligence.audienceConfirmed,
+    voiceConfirmed: company.intelligence.voiceConfirmed,
+  } : null
 
   return (
     <div className="space-y-6">
@@ -295,6 +342,14 @@ export default function CompanySettingsClient({ company, industries }: CompanySe
             </div>
           </div>
         </div>
+
+        {/* AI Intelligence Card */}
+        <CurrentAnalysisCard
+          companyId={company.id}
+          companyName={company.name}
+          intelligence={intelligenceData}
+          onRefresh={handleReanalyzeComplete}
+        />
 
         {/* Quick Links Card */}
         <div className="bg-[var(--bg-elevated)] rounded-2xl border border-[var(--border-default)] overflow-hidden">
