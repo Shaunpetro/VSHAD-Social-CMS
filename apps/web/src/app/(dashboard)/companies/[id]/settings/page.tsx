@@ -18,7 +18,7 @@ export default async function CompanySettingsPage({ params }: PageProps) {
         select: {
           id: true,
           type: true,
-          name: true  // Changed from platformName to name
+          name: true
         }
       }
     }
@@ -37,7 +37,7 @@ export default async function CompanySettingsPage({ params }: PageProps) {
     orderBy: { industry: 'asc' }
   })
 
-  // Transform for client component
+  // Transform for client component - convert Date objects to ISO strings
   const companyData = {
     id: company.id,
     name: company.name,
@@ -45,7 +45,12 @@ export default async function CompanySettingsPage({ params }: PageProps) {
     website: company.website,
     description: company.description,
     industry: company.industry,
-    intelligence: company.intelligence,
+    intelligence: company.intelligence ? {
+      ...company.intelligence,
+      lastAnalyzedAt: company.intelligence.lastAnalyzedAt?.toISOString() || null,
+      createdAt: company.intelligence.createdAt.toISOString(),
+      updatedAt: company.intelligence.updatedAt.toISOString(),
+    } : null,
     platforms: company.platforms.map(p => ({
       id: p.id,
       type: p.type,
