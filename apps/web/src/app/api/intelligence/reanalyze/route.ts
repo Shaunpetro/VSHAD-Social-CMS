@@ -50,6 +50,11 @@ interface Changes {
   saContext: ChangeItem[];
 }
 
+// Helper to convert typed objects to Prisma-compatible JSON
+function toJson<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value));
+}
+
 // ============================================
 // POST HANDLER
 // ============================================
@@ -140,27 +145,24 @@ export async function POST(request: NextRequest) {
     // Save new analysis
     const newVersion = existing.analysisVersion + 1;
     
-    // Convert sources to JSON-compatible format for Prisma
-    const sourcesJson = JSON.parse(JSON.stringify(sources));
-    
     await prisma.companyIntelligence.update({
       where: { companyId: body.companyId },
       data: {
-        dataSources: sourcesJson,
+        dataSources: toJson(sources),
         lastAnalyzedAt: new Date(),
         analysisVersion: newVersion,
         
-        aiAnalysis: result.analysis as unknown as Record<string, unknown>,
+        aiAnalysis: toJson(result.analysis),
         aiConfidenceScore: result.analysis.confidenceScore,
         
-        extractedIndustries: result.analysis.industries as unknown as Record<string, unknown>[],
-        extractedServices: result.analysis.services as unknown as Record<string, unknown>[],
-        extractedUSPs: result.analysis.uniqueSellingPoints as unknown as Record<string, unknown>[],
-        extractedAudience: result.analysis.targetAudience as unknown as Record<string, unknown>,
-        extractedVoice: result.analysis.brandVoice as unknown as Record<string, unknown>,
-        extractedSAContext: result.analysis.saContext as unknown as Record<string, unknown>,
+        extractedIndustries: toJson(result.analysis.industries),
+        extractedServices: toJson(result.analysis.services),
+        extractedUSPs: toJson(result.analysis.uniqueSellingPoints),
+        extractedAudience: toJson(result.analysis.targetAudience),
+        extractedVoice: toJson(result.analysis.brandVoice),
+        extractedSAContext: toJson(result.analysis.saContext),
         
-        generatedThemes: result.analysis.suggestedContentThemes as unknown as string[],
+        generatedThemes: toJson(result.analysis.suggestedContentThemes),
         
         // Reset confirmations if there are changes
         industriesConfirmed: hasChanges ? false : existing.industriesConfirmed,
