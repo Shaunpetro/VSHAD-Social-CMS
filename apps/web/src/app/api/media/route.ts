@@ -3,6 +3,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { put } from "@vercel/blob";
+import { Prisma } from "@prisma/client";
 
 // GET - List media with filters (ENHANCED with lifecycle support)
 export async function GET(request: NextRequest) {
@@ -19,15 +20,15 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get("limit") || "100");
     const offset = parseInt(searchParams.get("offset") || "0");
 
-    // Build where clause
-    const where: Record<string, unknown> = {};
+    // Build where clause with proper Prisma types
+    const where: Prisma.MediaWhereInput = {};
 
     if (companyId) {
       where.companyId = companyId;
     }
 
     if (type) {
-      where.type = type;
+      where.type = type as "IMAGE" | "VIDEO" | "GIF";
     }
 
     // Legacy support for unused parameter
@@ -46,7 +47,7 @@ export async function GET(request: NextRequest) {
       where.OR = [
         { expiresAt: { equals: null } },
         { expiresAt: { gt: now } },
-      ];
+      ] as Prisma.MediaWhereInput[];
     } else if (status === "used") {
       where.isUsed = true;
     } else if (status === "expiring") {
@@ -255,18 +256,19 @@ async function getMediaStats(companyId: string) {
   const warningDate = new Date();
   warningDate.setDate(warningDate.getDate() + 7);
 
+  // Build the "available" where clause with proper typing
+  const availableWhere: Prisma.MediaWhereInput = {
+    companyId,
+    isUsed: false,
+    OR: [
+      { expiresAt: { equals: null } },
+      { expiresAt: { gt: now } },
+    ] as Prisma.MediaWhereInput[],
+  };
+
   const [total, available, used, expiring] = await Promise.all([
     prisma.media.count({ where: { companyId } }),
-    prisma.media.count({
-      where: {
-        companyId,
-        isUsed: false,
-        OR: [
-          { expiresAt: { equals: null } },
-          { expiresAt: { gt: now } },
-        ],
-      },
-    }),
+    prisma.media.count({ where: availableWhere }),
     prisma.media.count({
       where: { companyId, isUsed: true },
     }),
