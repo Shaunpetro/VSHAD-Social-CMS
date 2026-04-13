@@ -79,14 +79,12 @@ export async function GET(request: NextRequest) {
         },
       }),
 
-      // Already expired
+      // Already expired (expiresAt < now, and expiresAt is not null)
+      // Note: { lt: now } naturally excludes null values in SQL
       prisma.media.count({
         where: {
           ...baseWhere,
-          expiresAt: {
-            lt: now,
-            not: null,
-          },
+          expiresAt: { lt: now },
         },
       }),
 
@@ -256,7 +254,7 @@ export async function GET(request: NextRequest) {
       where: {
         ...baseWhere,
         isUsed: true,
-        usedAt: { not: null },
+        usedAt: { not: undefined },
       },
       select: {
         createdAt: true,
