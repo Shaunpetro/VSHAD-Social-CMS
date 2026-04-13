@@ -15,9 +15,7 @@ import { prisma } from '@/lib/db';
 import { analyzeCompany, type AnalysisOptions } from '@/lib/intelligence/analyzer';
 import type { 
   DataSources, 
-  CompanyAnalysis,
-  ExtractedIndustry,
-  ExtractedService 
+  CompanyAnalysis
 } from '@/lib/intelligence/extractors';
 
 // ============================================
@@ -41,8 +39,8 @@ interface ReanalyzeRequestBody {
 
 interface ChangeItem {
   type: 'added' | 'removed' | 'updated';
-  item: any;
-  previous?: any;
+  item: unknown;
+  previous?: unknown;
 }
 
 interface Changes {
@@ -142,24 +140,27 @@ export async function POST(request: NextRequest) {
     // Save new analysis
     const newVersion = existing.analysisVersion + 1;
     
+    // Convert sources to JSON-compatible format for Prisma
+    const sourcesJson = JSON.parse(JSON.stringify(sources));
+    
     await prisma.companyIntelligence.update({
       where: { companyId: body.companyId },
       data: {
-        dataSources: sources,
+        dataSources: sourcesJson,
         lastAnalyzedAt: new Date(),
         analysisVersion: newVersion,
         
-        aiAnalysis: result.analysis as any,
+        aiAnalysis: result.analysis as unknown as Record<string, unknown>,
         aiConfidenceScore: result.analysis.confidenceScore,
         
-        extractedIndustries: result.analysis.industries as any,
-        extractedServices: result.analysis.services as any,
-        extractedUSPs: result.analysis.uniqueSellingPoints as any,
-        extractedAudience: result.analysis.targetAudience as any,
-        extractedVoice: result.analysis.brandVoice as any,
-        extractedSAContext: result.analysis.saContext as any,
+        extractedIndustries: result.analysis.industries as unknown as Record<string, unknown>[],
+        extractedServices: result.analysis.services as unknown as Record<string, unknown>[],
+        extractedUSPs: result.analysis.uniqueSellingPoints as unknown as Record<string, unknown>[],
+        extractedAudience: result.analysis.targetAudience as unknown as Record<string, unknown>,
+        extractedVoice: result.analysis.brandVoice as unknown as Record<string, unknown>,
+        extractedSAContext: result.analysis.saContext as unknown as Record<string, unknown>,
         
-        generatedThemes: result.analysis.suggestedContentThemes as any,
+        generatedThemes: result.analysis.suggestedContentThemes as unknown as string[],
         
         // Reset confirmations if there are changes
         industriesConfirmed: hasChanges ? false : existing.industriesConfirmed,
