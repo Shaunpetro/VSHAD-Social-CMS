@@ -2,6 +2,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { Prisma } from "@prisma/client";
 
 interface ScoredMedia {
   media: {
@@ -91,18 +92,20 @@ export async function GET(request: NextRequest) {
     const randomValue = Math.random() * 100;
     const shouldIncludeMedia = randomValue < applicableRatio;
 
-    // Query available media
+    // Query available media with proper typed where clause
     const now = new Date();
+    const availableWhere: Prisma.MediaWhereInput = {
+      companyId,
+      isUsed: false,
+      autoSelect: true,
+      OR: [
+        { expiresAt: { equals: null } },
+        { expiresAt: { gt: now } },
+      ] as Prisma.MediaWhereInput[],
+    };
+
     const availableMedia = await prisma.media.findMany({
-      where: {
-        companyId,
-        isUsed: false,
-        autoSelect: true,
-        OR: [
-          { expiresAt: null },
-          { expiresAt: { gt: now } },
-        ],
-      },
+      where: availableWhere,
       select: {
         id: true,
         filename: true,
@@ -269,37 +272,25 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get suggestions using the same logic
-    const params = new URLSearchParams({
-      companyId,
-      ...(pillarId && { pillarId }),
-      ...(contentType && { contentType }),
-      ...(topic && { topic }),
-      ...(tags && { tags: tags.join(",") }),
-      limit: "1",
-    });
-
-    const suggestionsUrl = new URL(
-      `/api/media/suggestions?${params}`,
-      request.url
-    );
-    
     // Reuse GET logic internally
     const intelligence = await prisma.companyIntelligence.findUnique({
       where: { companyId },
     });
 
+    // Build available media where clause with proper typing
     const now = new Date();
+    const availableWhere: Prisma.MediaWhereInput = {
+      companyId,
+      isUsed: false,
+      autoSelect: true,
+      OR: [
+        { expiresAt: { equals: null } },
+        { expiresAt: { gt: now } },
+      ] as Prisma.MediaWhereInput[],
+    };
+
     const availableMedia = await prisma.media.findMany({
-      where: {
-        companyId,
-        isUsed: false,
-        autoSelect: true,
-        OR: [
-          { expiresAt: null },
-          { expiresAt: { gt: now } },
-        ],
-      },
+      where: availableWhere,
       orderBy: [
         { priority: "desc" },
         { createdAt: "desc" },
