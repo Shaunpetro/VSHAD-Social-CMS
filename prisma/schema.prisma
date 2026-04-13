@@ -109,13 +109,14 @@ model ContentSettings {
 }
 
 // ============================================
-// MEDIA LIBRARY (ENHANCED)
+// MEDIA LIBRARY (SMART SYSTEM WITH LIFECYCLE)
 // ============================================
 
 model Media {
   id        String @id @default(cuid())
   companyId String
 
+  // File Information
   filename     String
   url          String
   thumbnailUrl String?
@@ -126,17 +127,26 @@ model Media {
   height       Int?
   altText      String?
 
-  // Pillar & Tag associations
-  pillarIds    String[]  // References to ContentPillar IDs
-  tags         String[]  // Custom tags (e.g., "pasta", "team photo")
+  // Categorization
+  pillarIds    String[] // References to ContentPillar IDs
+  tags         String[] // Custom tags (e.g., "pasta", "team photo")
+  contentTypes String[] // educational, engagement, social_proof, promotional
 
-  // Content type hints (educational, engagement, social_proof, promotional)
-  contentTypes String[]
+  // Lifecycle Management
+  isUsed       Boolean   @default(false)
+  usedAt       DateTime?
+  usedInPostId String? // Reference to the post that used this media
+  expiresAt    DateTime // Auto-set to createdAt + 2 months
 
-  // Usage tracking
+  // Auto-Selection
+  autoSelect Boolean @default(true) // Include in auto-selection pool
+  priority   Int     @default(0) // Higher = selected first (for expiring soon)
+
+  // Usage Tracking (for analytics)
   usageCount Int       @default(0)
   lastUsedAt DateTime?
 
+  // Relations
   company   Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
   postMedia PostMedia[]
 
@@ -144,6 +154,8 @@ model Media {
   updatedAt DateTime @updatedAt
 
   @@index([companyId, createdAt])
+  @@index([companyId, isUsed, expiresAt])
+  @@index([companyId, autoSelect, isUsed])
 }
 
 enum MediaType {
@@ -326,6 +338,22 @@ model CompanyIntelligence {
 
   onboardingCompleted Boolean   @default(false)
   lastResearchSync    DateTime?
+
+  // ============================================
+  // MEDIA CONTENT BALANCE SETTINGS
+  // ============================================
+  mediaBalanceEnabled     Boolean @default(true)
+  mediaPostRatio          Int     @default(60) // Percentage of posts with media (0-100)
+
+  // Content-type specific ratios (percentage with media)
+  educationalMediaRatio   Int     @default(50)
+  engagementMediaRatio    Int     @default(30)
+  socialProofMediaRatio   Int     @default(80)
+  promotionalMediaRatio   Int     @default(70)
+
+  // Expiring media handling
+  prioritizeExpiringMedia Boolean @default(true)
+  expiryWarningDays       Int     @default(7) // Days before expiry to prioritize
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

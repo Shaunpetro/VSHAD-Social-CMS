@@ -1,9 +1,10 @@
 // apps/web/src/app/api/media/route.ts
+
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { put } from "@vercel/blob";
 
-// GET - List media with filters
+// GET - List media with filters (ENHANCED with lifecycle support)
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -12,7 +13,11 @@ export async function GET(request: NextRequest) {
     const contentType = searchParams.get("contentType");
     const type = searchParams.get("type"); // IMAGE, VIDEO, GIF
     const tag = searchParams.get("tag");
-    const unused = searchParams.get("unused"); // "true" to get only unused media
+    const search = searchParams.get("search");
+    const status = searchParams.get("status"); // available, used, expiring, expired, all
+    const unused = searchParams.get("unused"); // Legacy: "true" to get only unused media
+    const limit = parseInt(searchParams.get("limit") || "100");
+    const offset = parseInt(searchParams.get("offset") || "0");
 
     // Build where clause
     const where: Record<string, unknown> = {};
@@ -25,8 +30,41 @@ export async function GET(request: NextRequest) {
       where.type = type;
     }
 
+    // Legacy support for unused parameter
     if (unused === "true") {
       where.usageCount = 0;
+      where.isUsed = false;
+    }
+
+    // New status filters
+    const now = new Date();
+    const warningDate = new Date();
+    warningDate.setDate(warningDate.getDate() + 7);
+
+    if (status === "available") {
+      where.isUsed = false;
+      where.OR = [
+        { expiresAt: null },
+        { expiresAt: { gt: now } },
+      ];
+    } else if (status === "used") {
+      where.isUsed = true;
+    } else if (status === "expiring") {
+      where.isUsed = false;
+      where.expiresAt = {
+        gt: now,
+        lte: warningDate,
+      };
+    } else if (status === "expired") {
+      where.expiresAt = { lt: now };
+    }
+
+    // Search filter
+    if (search) {
+      where.OR = [
+        { filename: { contains: search, mode: "insensitive" } },
+        { altText: { contains: search, mode: "insensitive" } },
+      ];
     }
 
     // Fetch media
@@ -46,9 +84,12 @@ export async function GET(request: NextRequest) {
           },
         },
       },
-      orderBy: {
-        createdAt: "desc",
-      },
+      orderBy: [
+        { priority: "desc" },
+        { createdAt: "desc" },
+      ],
+      take: limit,
+      skip: offset,
     });
 
     // Filter by pillarId (since it's an array field)
@@ -69,7 +110,22 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    return NextResponse.json(media);
+    // Get total count for pagination
+    const total = await prisma.media.count({ where });
+
+    // Get stats if companyId provided
+    let stats = null;
+    if (companyId) {
+      stats = await getMediaStats(companyId);
+    }
+
+    return NextResponse.json({
+      media,
+      total,
+      limit,
+      offset,
+      stats,
+    });
   } catch (error) {
     console.error("Failed to fetch media:", error);
     return NextResponse.json(
@@ -79,7 +135,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST - Upload new media
+// POST - Upload new media (ENHANCED with lifecycle fields)
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
@@ -90,6 +146,7 @@ export async function POST(request: NextRequest) {
     const contentTypesJson = formData.get("contentTypes") as string | null;
     const tagsJson = formData.get("tags") as string | null;
     const altText = formData.get("altText") as string | null;
+    const autoSelectValue = formData.get("autoSelect") as string | null;
 
     if (!file) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
@@ -114,7 +171,12 @@ export async function POST(request: NextRequest) {
     // Parse arrays
     const pillarIds = pillarIdsJson ? JSON.parse(pillarIdsJson) : [];
     const contentTypes = contentTypesJson ? JSON.parse(contentTypesJson) : [];
-    const tags = tagsJson ? JSON.parse(tagsJson) : [];
+    const tags = tagsJson 
+      ? JSON.parse(tagsJson).map((t: string) => t.toLowerCase().trim()) 
+      : [];
+
+    // Parse autoSelect (default true)
+    const autoSelect = autoSelectValue !== "false";
 
     // Determine media type
     const mimeType = file.type;
@@ -126,17 +188,21 @@ export async function POST(request: NextRequest) {
     }
 
     // Upload to Vercel Blob
-    const filename = `${companyId}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
+    const filename = `media/${companyId}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
     const blob = await put(filename, file, {
       access: "public",
       addRandomSuffix: false,
     });
 
-    // Get image dimensions (basic approach - works for most images)
-    let width: number | null = null;
-    let height: number | null = null;
+    // Calculate expiry date (2 months from now)
+    const expiresAt = new Date();
+    expiresAt.setMonth(expiresAt.getMonth() + 2);
 
-    // Create media record
+    // Get image dimensions (basic approach - works for most images)
+    const width: number | null = null;
+    const height: number | null = null;
+
+    // Create media record with lifecycle fields
     const media = await prisma.media.create({
       data: {
         companyId,
@@ -151,7 +217,17 @@ export async function POST(request: NextRequest) {
         pillarIds,
         contentTypes,
         tags,
+        // Lifecycle fields
+        isUsed: false,
+        usedAt: null,
+        usedInPostId: null,
+        expiresAt,
+        // Auto-selection fields
+        autoSelect,
+        priority: 0,
+        // Usage tracking
         usageCount: 0,
+        lastUsedAt: null,
       },
       include: {
         company: {
@@ -171,4 +247,40 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+// Helper function to get media stats for a company
+async function getMediaStats(companyId: string) {
+  const now = new Date();
+  const warningDate = new Date();
+  warningDate.setDate(warningDate.getDate() + 7);
+
+  const [total, available, used, expiring] = await Promise.all([
+    prisma.media.count({ where: { companyId } }),
+    prisma.media.count({
+      where: {
+        companyId,
+        isUsed: false,
+        OR: [
+          { expiresAt: null },
+          { expiresAt: { gt: now } },
+        ],
+      },
+    }),
+    prisma.media.count({
+      where: { companyId, isUsed: true },
+    }),
+    prisma.media.count({
+      where: {
+        companyId,
+        isUsed: false,
+        expiresAt: {
+          gt: now,
+          lte: warningDate,
+        },
+      },
+    }),
+  ]);
+
+  return { total, available, used, expiring };
 }
