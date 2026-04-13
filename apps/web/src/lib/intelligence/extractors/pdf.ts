@@ -7,7 +7,7 @@
 
 import type { PDFExtractionResult } from './index';
 
-// Dynamic import for pdf-parse (CommonJS module)
+// Dynamic import for pdf-parse
 let pdfParse: ((buffer: Buffer) => Promise<{
   text: string;
   numpages: number;
@@ -21,7 +21,10 @@ let pdfParse: ((buffer: Buffer) => Promise<{
 async function getPdfParser() {
   if (!pdfParse) {
     const pdfModule = await import('pdf-parse');
-    pdfParse = pdfModule.default || pdfModule;
+    // Handle both ESM and CommonJS exports
+    pdfParse = typeof pdfModule === 'function' 
+      ? pdfModule 
+      : (pdfModule as { default?: typeof pdfParse }).default || (pdfModule as unknown as typeof pdfParse);
   }
   return pdfParse;
 }
