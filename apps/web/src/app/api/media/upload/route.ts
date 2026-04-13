@@ -68,7 +68,11 @@ export async function POST(request: NextRequest) {
 
     const mediaType = getMediaType(file.type);
 
-    // Save to database
+    // Calculate expiry date (2 months from now)
+    const expiresAt = new Date();
+    expiresAt.setMonth(expiresAt.getMonth() + 2);
+
+    // Save to database with lifecycle fields
     const media = await prisma.media.create({
       data: {
         companyId,
@@ -77,6 +81,21 @@ export async function POST(request: NextRequest) {
         type: mediaType,
         mimeType: file.type,
         size: fileSize,
+        // Lifecycle fields
+        expiresAt,
+        isUsed: false,
+        usedAt: null,
+        usedInPostId: null,
+        // Auto-selection fields
+        autoSelect: true,
+        priority: 0,
+        // Usage tracking
+        usageCount: 0,
+        lastUsedAt: null,
+        // Arrays (defaults)
+        pillarIds: [],
+        contentTypes: [],
+        tags: [],
       },
     });
 
