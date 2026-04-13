@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
           { 
             expiresAt: { 
               lt: now,
-              not: null,
+              not: undefined,
             } 
           }, // Expired
         ],
@@ -186,7 +186,7 @@ export async function GET(request: NextRequest) {
           isUsed: false,
           expiresAt: {
             lt: now,
-            not: null,
+            not: undefined,
           },
         },
         select: {
