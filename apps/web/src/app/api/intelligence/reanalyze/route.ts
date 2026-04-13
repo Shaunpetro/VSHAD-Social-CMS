@@ -12,6 +12,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
+import { Prisma } from '@prisma/client';
 import { analyzeCompany, type AnalysisOptions } from '@/lib/intelligence/analyzer';
 import type { 
   DataSources, 
@@ -51,8 +52,8 @@ interface Changes {
 }
 
 // Helper to convert typed objects to Prisma-compatible JSON
-function toJson<T>(value: T): T {
-  return JSON.parse(JSON.stringify(value));
+function toJson(value: unknown): Prisma.InputJsonValue {
+  return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 }
 
 // ============================================
