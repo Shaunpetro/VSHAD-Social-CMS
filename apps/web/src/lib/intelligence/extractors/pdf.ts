@@ -21,8 +21,8 @@ let pdfParse: ((buffer: Buffer) => Promise<{
 async function getPdfParser() {
   if (!pdfParse) {
     // @ts-expect-error - pdf-parse is a CommonJS module
-    const module = await import('pdf-parse');
-    pdfParse = module.default || module;
+    const pdfModule = await import('pdf-parse');
+    pdfParse = pdfModule.default || pdfModule;
   }
   return pdfParse;
 }
