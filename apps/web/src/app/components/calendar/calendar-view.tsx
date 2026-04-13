@@ -15,12 +15,13 @@ import { PostDetailModal } from "./post-detail-modal";
 
 interface Post {
   id: string;
+  companyId: string;
   content: string;
   status: string;
   scheduledFor: string | null;
   publishedAt: string | null;
   topic: string | null;
-  tone: string | null;  // ← ADDED
+  tone: string | null;
   hashtags: string[];
   platform: {
     id: string;
