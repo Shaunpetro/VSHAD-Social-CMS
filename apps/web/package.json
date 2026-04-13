@@ -21,6 +21,7 @@
     "@prisma/client": "6.1.0",
     "@uploadthing/react": "^7.3.3",
     "@vercel/blob": "^2.3.3",
+    "cheerio": "^1.2.0",
     "clsx": "^2.1.1",
     "framer-motion": "^11.0.0",
     "groq-sdk": "^1.1.1",
@@ -28,6 +29,7 @@
     "lucide-react": "^0.460.0",
     "next": "^15.0.4",
     "openai": "^6.27.0",
+    "pdf-parse": "^2.4.5",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-image-crop": "^11.0.10",
@@ -38,6 +40,7 @@
   "devDependencies": {
     "@tailwindcss/typography": "^0.5.0",
     "@types/node": "^22.10.5",
+    "@types/pdf-parse": "^1.1.5",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "autoprefixer": "^10.4.0",

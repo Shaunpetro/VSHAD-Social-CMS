@@ -37,7 +37,7 @@ model Company {
   id          String   @id @default(cuid())
   name        String
   website     String?
-  industry    String?
+  industry    String?  // Legacy field - kept for backward compatibility
   description String?
   logoUrl     String?
   userId      String   @default("temp-user-001")
@@ -48,6 +48,7 @@ model Company {
   media             Media[]
   intelligence      CompanyIntelligence?
   contentQueueItems ContentQueueItem[]
+  documents         CompanyDocument[]      // NEW: Company profile documents
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -80,6 +81,32 @@ enum PlatformType {
 }
 
 // ============================================
+// NEW: COMPANY DOCUMENTS (PDF Profiles, Brochures)
+// ============================================
+
+model CompanyDocument {
+  id        String @id @default(cuid())
+  companyId String
+
+  type     String // 'company_profile' | 'capability_statement' | 'brochure' | 'other'
+  filename String
+  url      String // Vercel Blob URL or external URL
+  mimeType String
+  size     Int
+
+  // Analysis tracking
+  extractedText String?   @db.Text // Extracted text from PDF
+  analyzedAt    DateTime?
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyId])
+}
+
+// ============================================
 // CONTENT SETTINGS (Legacy - kept for compatibility)
 // ============================================
 
@@ -96,8 +123,8 @@ model ContentSettings {
   includeEmojis   Boolean @default(false)
   maxLength       Int?
 
-  brandVoice      String?
-  avoidTopics     String[]
+  brandVoice  String?
+  avoidTopics String[]
 
   defaultPostingTimes String[] @default(["09:00", "14:00", "18:00"])
   timezone            String   @default("Africa/Johannesburg")
@@ -286,6 +313,9 @@ model CompanyIntelligence {
   companyId String  @unique
   company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
+  // ============================================
+  // EXISTING: BRAND IDENTITY
+  // ============================================
   brandPersonality    String[]
   brandVoice          String?
   uniqueSellingPoints String[]
@@ -300,6 +330,9 @@ model CompanyIntelligence {
   industryHashtags String[]
   brandedHashtags  String[]
 
+  // ============================================
+  // EXISTING: TONE & HUMOR SETTINGS
+  // ============================================
   defaultTone     String   @default("professional")
   humorEnabled    Boolean  @default(true)
   humorStyle      String?
@@ -307,12 +340,18 @@ model CompanyIntelligence {
   humorTimes      String[]
   dayToneSchedule Json?
 
+  // ============================================
+  // EXISTING: POSTING SCHEDULE
+  // ============================================
   postsPerWeek   Int      @default(4)
   preferredDays  String[]
   preferredTimes Json?
   timezone       String   @default("Africa/Johannesburg")
   autoApprove    Boolean  @default(false)
 
+  // ============================================
+  // EXISTING: LEARNED INTELLIGENCE
+  // ============================================
   learnedBestDays    String[]
   learnedBestTimes   Json?
   learnedBestPillars Json?
@@ -330,6 +369,9 @@ model CompanyIntelligence {
   lastIntelligenceUpdate DateTime?
   weeklyPostTarget       Int?
 
+  // ============================================
+  // EXISTING: COMPETITOR ANALYSIS
+  // ============================================
   competitors    Competitor[]
   competitorGaps String[]
 
@@ -340,20 +382,84 @@ model CompanyIntelligence {
   lastResearchSync    DateTime?
 
   // ============================================
-  // MEDIA CONTENT BALANCE SETTINGS
+  // EXISTING: MEDIA CONTENT BALANCE SETTINGS
   // ============================================
-  mediaBalanceEnabled     Boolean @default(true)
-  mediaPostRatio          Int     @default(60) // Percentage of posts with media (0-100)
+  mediaBalanceEnabled Boolean @default(true)
+  mediaPostRatio      Int     @default(60) // Percentage of posts with media (0-100)
 
   // Content-type specific ratios (percentage with media)
-  educationalMediaRatio   Int     @default(50)
-  engagementMediaRatio    Int     @default(30)
-  socialProofMediaRatio   Int     @default(80)
-  promotionalMediaRatio   Int     @default(70)
+  educationalMediaRatio Int @default(50)
+  engagementMediaRatio  Int @default(30)
+  socialProofMediaRatio Int @default(80)
+  promotionalMediaRatio Int @default(70)
 
   // Expiring media handling
   prioritizeExpiringMedia Boolean @default(true)
   expiryWarningDays       Int     @default(7) // Days before expiry to prioritize
+
+  // ============================================
+  // NEW: DATA SOURCES FOR AI ANALYSIS
+  // ============================================
+  // Stores URLs/references to data sources used for analysis
+  // Format: { website: "url", linkedin: "url", pdfUrl: "url", manual: "text" }
+  dataSources     Json?
+  lastAnalyzedAt  DateTime?
+  analysisVersion Int       @default(1) // Increment on each re-analysis
+
+  // ============================================
+  // NEW: AI ANALYSIS RESULTS
+  // ============================================
+  // Full structured analysis output from Groq
+  aiAnalysis        Json?
+  aiConfidenceScore Float? // Overall confidence 0-1
+
+  // Extracted & User-Confirmable Data
+  // Format: [{ code: "CONST_CE", name: "Civil Engineering", confidence: 0.95, cidbGrade: 7 }]
+  extractedIndustries Json?
+
+  // Format: [{ name: "Structural Steel", keywords: ["steel", "structural"], isCore: true }]
+  extractedServices Json?
+
+  // Format: [{ point: "CIDB Level 7 in 5 disciplines", category: "certification", evidence: "..." }]
+  extractedUSPs Json?
+
+  // Format: { businessType: "B2B", primarySectors: ["Mining"], decisionMakers: ["Procurement Managers"], ... }
+  extractedAudience Json?
+
+  // Format: { formality: "professional", personality: ["confident", "expert"], technicalLevel: "high" }
+  extractedVoice Json?
+
+  // Format: { bbeeLevel: 2, cidbGrades: { CE: 7, GB: 7 }, provinces: ["Gauteng"], industryBodies: ["SAFCEC"] }
+  extractedSAContext Json?
+
+  // ============================================
+  // NEW: USER CONFIRMATION STATUS
+  // ============================================
+  industriesConfirmed Boolean @default(false)
+  servicesConfirmed   Boolean @default(false)
+  uspsConfirmed       Boolean @default(false)
+  audienceConfirmed   Boolean @default(false)
+  voiceConfirmed      Boolean @default(false)
+
+  // ============================================
+  // NEW: BUSINESS GOAL (User Selected)
+  // ============================================
+  // Drives content strategy: 'leads' | 'awareness' | 'recruitment' | 'engagement'
+  primaryBusinessGoal String?
+  secondaryGoals      String[]
+
+  // ============================================
+  // NEW: AUTO-GENERATED CONTENT STRATEGY
+  // ============================================
+  // Custom content mix based on goal + audience (overrides default 40-30-20-10)
+  generatedContentMix Json?
+
+  // Content themes per service/industry
+  // Format: [{ theme: "Technical Expertise", purpose: "...", topicExamples: [...], frequency: "weekly" }]
+  generatedThemes Json?
+
+  // Specific topic suggestions ready for content generation
+  generatedTopics Json?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
