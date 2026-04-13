@@ -38,9 +38,14 @@ export interface MediaItem {
   contentTypes: string[];
   isUsed: boolean;
   usedAt: string | null;
+  usedInPostId: string | null;
   expiresAt: string | null;
+  autoSelect: boolean;
   priority: number;
+  usageCount: number;
+  lastUsedAt: string | null;
   createdAt: string;
+  updatedAt: string;
   company?: {
     id: string;
     name: string;
