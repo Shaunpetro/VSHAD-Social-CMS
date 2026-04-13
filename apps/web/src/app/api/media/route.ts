@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
     if (status === "available") {
       where.isUsed = false;
       where.OR = [
-        { expiresAt: null },
+        { expiresAt: { equals: null } },
         { expiresAt: { gt: now } },
       ];
     } else if (status === "used") {
@@ -262,7 +262,7 @@ async function getMediaStats(companyId: string) {
         companyId,
         isUsed: false,
         OR: [
-          { expiresAt: null },
+          { expiresAt: { equals: null } },
           { expiresAt: { gt: now } },
         ],
       },
