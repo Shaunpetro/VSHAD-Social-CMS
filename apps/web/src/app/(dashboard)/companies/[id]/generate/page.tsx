@@ -215,7 +215,7 @@ function formatDays(days: string[]): string {
   return days.slice(0, 3).map(d => capitalizeFirst(d.slice(0, 3))).join(', ');
 }
 
-function getTopContentType(types: Record<string, number> | null): string {
+function getTopContentType(types: Record<string, number> | null | undefined): string {
   if (!types || Object.keys(types).length === 0) return 'Educational';
   const sorted = Object.entries(types).sort((a, b) => b[1] - a[1]);
   return capitalizeFirst(sorted[0]?.[0] || 'Educational');
