@@ -20,374 +20,43 @@ import {
   CheckCircle2,
   AlertCircle,
   Info,
-  ChevronDown,
-  ChevronUp,
   Loader2,
-  Linkedin,
-  Facebook,
-  Twitter,
-  Instagram,
   Globe,
   FileText,
-  Users,
-  MessageSquare,
-  Award,
-  Megaphone,
-  Lightbulb,
-  Heart,
-  Camera,
   RefreshCw,
   Settings2,
-  Check,
   X,
   PlusCircle,
-  Flame,
   Clock,
+  CalendarCheck,
+  ClipboardList,
 } from 'lucide-react';
 
-// ============================================
-// TYPES
-// ============================================
-
-interface Company {
-  id: string;
-  name: string;
-  industry: string | null;
-}
-
-interface Platform {
-  id: string;
-  type: string;
-  name: string;
-  isConnected: boolean;
-}
-
-interface ContentPillar {
-  id: string;
-  name: string;
-  topics: string[];
-  contentTypes: string[];
-  avgEngagement: number | null;
-}
-
-interface Intelligence {
-  postsPerWeek: number;
-  preferredDays: string[];
-  primaryGoals: string[];
-  defaultTone: string;
-  autoApprove: boolean;
-  intelligenceScore: number;
-  engagementTrend: string | null;
-  avgEngagementRate: number | null;
-  topPerformingTypes: Record<string, number> | null;
-  learnedBestDays: string[];
-  learnedBestTimes: Record<string, string[]> | null;
-  contentPillars: ContentPillar[];
-  uniqueSellingPoints: string[];
-  onboardingCompleted: boolean;
-}
-
-interface IntelligenceHealth {
-  overallScore: number;
-  breakdown: Record<string, { score: number; status: string; message: string }>;
-  recommendations: string[];
-  dataAge: {
-    daysOfData: number;
-  };
-}
-
-interface VolumeRecommendation {
-  recommended: number;
-  minimum: number;
-  maximum: number;
-  breakdown: {
-    base: number;
-    industryModifier: number;
-    goalModifier: number;
-    performanceModifier: number;
-    platformDistribution: Record<string, number>;
-  };
-  reasoning: string[];
-}
-
-interface ContentMixItem {
-  percentage: number;
-  count: number;
-  reasoning: string;
-  suggestedTopics: string[];
-  performanceNote: string | null;
-}
-
-interface ContentMixRecommendation {
-  mix: Record<string, ContentMixItem>;
-  totalPosts: number;
-  isPerformanceBased: boolean;
-  adjustments: string[];
-  funnelBreakdown: Record<string, number>;
-}
-
-interface ScheduleSlot {
-  dayOfWeek: string;
-  date: string;
-  time: string;
-  platform: string;
-  contentType: string;
-  topic: string | null;
-  confidence: 'high' | 'medium' | 'low';
-  reason: string;
-}
-
-interface ContentPlan {
-  intelligenceHealth: IntelligenceHealth;
-  volume: VolumeRecommendation;
-  contentMix: ContentMixRecommendation;
-  schedule: {
-    slots: ScheduleSlot[];
-    optimizationNotes: string[];
-  };
-  summary: {
-    totalPosts: number;
-    platforms: string[];
-    topContentTypes: string[];
-    estimatedEngagement: string;
-  };
-}
-
-type GenerationMode = 'single' | 'bulk';
-type GenerationPeriod = 'weekly' | 'biweekly' | 'monthly';
-type TopicMode = 'auto' | 'manual';
-
-// ============================================
-// CONSTANTS
-// ============================================
-
-const platformIcons: Record<string, typeof Linkedin> = {
-  LINKEDIN: Linkedin,
-  FACEBOOK: Facebook,
-  TWITTER: Twitter,
-  INSTAGRAM: Instagram,
-  WORDPRESS: Globe,
-};
-
-const platformColors: Record<string, { bg: string; border: string; text: string; ring: string }> = {
-  LINKEDIN: { bg: 'bg-[#0A66C2]/10', border: 'border-[#0A66C2]', text: 'text-[#0A66C2]', ring: 'ring-[#0A66C2]/30' },
-  FACEBOOK: { bg: 'bg-[#1877F2]/10', border: 'border-[#1877F2]', text: 'text-[#1877F2]', ring: 'ring-[#1877F2]/30' },
-  TWITTER: { bg: 'bg-[#1DA1F2]/10', border: 'border-[#1DA1F2]', text: 'text-[#1DA1F2]', ring: 'ring-[#1DA1F2]/30' },
-  INSTAGRAM: { bg: 'bg-[#E4405F]/10', border: 'border-[#E4405F]', text: 'text-[#E4405F]', ring: 'ring-[#E4405F]/30' },
-  WORDPRESS: { bg: 'bg-[#21759B]/10', border: 'border-[#21759B]', text: 'text-[#21759B]', ring: 'ring-[#21759B]/30' },
-};
-
-const contentTypeIcons: Record<string, typeof FileText> = {
-  educational: Lightbulb,
-  engagement: MessageSquare,
-  socialProof: Award,
-  promotional: Megaphone,
-  tips: FileText,
-  behindTheScenes: Camera,
-  community: Users,
-  motivational: Heart,
-};
-
-const contentTypeColors: Record<string, string> = {
-  educational: 'text-blue-500 bg-blue-500/10',
-  engagement: 'text-purple-500 bg-purple-500/10',
-  socialProof: 'text-amber-500 bg-amber-500/10',
-  promotional: 'text-green-500 bg-green-500/10',
-  tips: 'text-cyan-500 bg-cyan-500/10',
-  behindTheScenes: 'text-pink-500 bg-pink-500/10',
-  community: 'text-indigo-500 bg-indigo-500/10',
-  motivational: 'text-red-500 bg-red-500/10',
-};
-
-const periodConfig: Record<GenerationPeriod, { label: string; description: string; days: number }> = {
-  weekly: { label: 'Weekly', description: '7 days of content', days: 7 },
-  biweekly: { label: 'Bi-weekly', description: '14 days of content', days: 14 },
-  monthly: { label: 'Monthly', description: '30 days of content', days: 30 },
-};
-
-const toneOptions = [
-  { value: 'professional', label: 'Professional', description: 'Polished & business-focused' },
-  { value: 'casual', label: 'Casual', description: 'Relaxed & approachable' },
-  { value: 'friendly', label: 'Friendly', description: 'Warm & personable' },
-  { value: 'authoritative', label: 'Authoritative', description: 'Expert & confident' },
-];
-
-// ============================================
-// HELPER FUNCTIONS
-// ============================================
-
-function capitalizeFirst(str: string): string {
-  return str.charAt(0).toUpperCase() + str.slice(1);
-}
-
-function formatDays(days: string[]): string {
-  if (!days || days.length === 0) return 'Not set';
-  return days.slice(0, 3).map(d => capitalizeFirst(d.slice(0, 3))).join(', ');
-}
-
-function getTopContentType(types: Record<string, number> | null | undefined): string {
-  if (!types || Object.keys(types).length === 0) return 'Educational';
-  const sorted = Object.entries(types).sort((a, b) => b[1] - a[1]);
-  return capitalizeFirst(sorted[0]?.[0] || 'Educational');
-}
-
-// ============================================
-// REUSABLE COMPONENTS
-// ============================================
-
-// Selection Card Component - Consistent across all selections
-interface SelectionCardProps {
-  selected: boolean;
-  onClick: () => void;
-  disabled?: boolean;
-  children: React.ReactNode;
-  className?: string;
-  size?: 'sm' | 'md' | 'lg';
-  accentColor?: string;
-}
-
-function SelectionCard({ 
-  selected, 
-  onClick, 
-  disabled, 
-  children, 
-  className = '', 
-  size = 'md',
-  accentColor,
-}: SelectionCardProps) {
-  const sizeClasses = {
-    sm: 'px-3 py-2',
-    md: 'px-4 py-3',
-    lg: 'px-5 py-4',
-  };
-
-  const borderColor = accentColor || 'border-primary';
-  const bgColor = accentColor ? accentColor.replace('border-', 'bg-').replace(']', '/10]') : 'bg-primary/5';
-
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      className={`
-        relative rounded-xl border-2 transition-all duration-200
-        focus:outline-none focus:ring-2 focus:ring-primary/50 focus:ring-offset-2 focus:ring-offset-background
-        ${sizeClasses[size]}
-        ${disabled 
-          ? 'opacity-50 cursor-not-allowed border-border/40 bg-muted/20' 
-          : selected
-            ? `${borderColor} ${bgColor} shadow-lg shadow-primary/10 scale-[1.02]`
-            : 'border-border/60 hover:border-border hover:bg-secondary/30 hover:scale-[1.01]'
-        }
-        ${className}
-      `}
-    >
-      {/* Selection indicator */}
-      {selected && !disabled && (
-        <motion.div 
-          initial={{ scale: 0 }}
-          animate={{ scale: 1 }}
-          className="absolute -top-1.5 -right-1.5 p-0.5 rounded-full bg-primary text-primary-foreground shadow-md"
-        >
-          <Check size={10} strokeWidth={3} />
-        </motion.div>
-      )}
-      {children}
-    </button>
-  );
-}
-
-// Expandable Section Component
-interface ExpandableSectionProps {
-  title: string;
-  subtitle: string;
-  icon: React.ReactNode;
-  iconBg: string;
-  expanded: boolean;
-  onToggle: () => void;
-  badge?: React.ReactNode;
-  hasData?: boolean;
-  children: React.ReactNode;
-}
-
-function ExpandableSection({ 
-  title, 
-  subtitle, 
-  icon, 
-  iconBg, 
-  expanded, 
-  onToggle, 
-  badge,
-  hasData = true,
-  children 
-}: ExpandableSectionProps) {
-  return (
-    <div className={`
-      rounded-xl border-2 transition-all duration-200
-      ${expanded 
-        ? 'border-primary/40 bg-gradient-to-br from-primary/5 via-transparent to-purple-500/5 shadow-lg shadow-primary/5' 
-        : hasData 
-          ? 'border-border/60 bg-card hover:border-primary/20 hover:shadow-md'
-          : 'border-border/40 bg-card/50'
-      }
-    `}>
-      <button
-        onClick={onToggle}
-        className="flex items-center justify-between w-full p-6 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary/30 rounded-xl"
-      >
-        <div className="flex items-center gap-3">
-          <div className={`p-2.5 rounded-xl ${iconBg} transition-transform duration-200 ${expanded ? 'scale-110' : ''}`}>
-            {icon}
-          </div>
-          <div className="text-left">
-            <div className="flex items-center gap-2">
-              <h2 className="text-lg font-semibold">{title}</h2>
-              {badge}
-            </div>
-            <p className="text-sm text-muted-foreground">{subtitle}</p>
-          </div>
-        </div>
-        <div className={`p-1.5 rounded-lg transition-all duration-200 ${expanded ? 'bg-primary/10 rotate-0' : 'hover:bg-secondary rotate-0'}`}>
-          <ChevronDown size={20} className={`transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`} />
-        </div>
-      </button>
-
-      <AnimatePresence>
-        {expanded && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.25, ease: 'easeInOut' }}
-            className="overflow-hidden"
-          >
-            <div className="px-6 pb-6 pt-0">
-              <div className="h-px bg-gradient-to-r from-transparent via-border to-transparent mb-4" />
-              {children}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
-
-// Confidence Badge Component
-function ConfidenceBadge({ confidence }: { confidence: 'high' | 'medium' | 'low' }) {
-  const config = {
-    high: { icon: Flame, text: 'High confidence', className: 'text-green-500 bg-green-500/10' },
-    medium: { icon: TrendingUp, text: 'Medium', className: 'text-amber-500 bg-amber-500/10' },
-    low: { icon: Info, text: 'Low', className: 'text-muted-foreground bg-secondary' },
-  };
-  
-  const { icon: Icon, text, className } = config[confidence];
-  
-  return (
-    <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium ${className}`}>
-      <Icon size={10} />
-      {text}
-    </span>
-  );
-}
+import {
+  // Types
+  Company,
+  Platform,
+  Intelligence,
+  ContentPlan,
+  GenerationMode,
+  GenerationPeriod,
+  TopicMode,
+  // Constants
+  platformIcons,
+  platformColors,
+  contentTypeIcons,
+  contentTypeColors,
+  periodConfig,
+  toneOptions,
+  // Helpers
+  capitalizeFirst,
+  formatDays,
+  getTopContentType,
+  // Components
+  SelectionCard,
+  ExpandableSection,
+  ConfidenceBadge,
+} from './components';
 
 // ============================================
 // MAIN COMPONENT
@@ -429,7 +98,7 @@ export default function EnhancedGeneratePage() {
     schedule: false,
   });
 
-  // Single post state (for single mode)
+  // Single post state
   const [singleTopic, setSingleTopic] = useState('');
   const [singlePlatform, setSinglePlatform] = useState('');
   const [generatedContent, setGeneratedContent] = useState<string | null>(null);
@@ -458,31 +127,18 @@ export default function EnhancedGeneratePage() {
 
       if (platformsRes.ok) {
         const platformsData = await platformsRes.json();
-        console.log('Platforms loaded:', platformsData);
         setPlatforms(platformsData);
-        
-        // Auto-select connected platforms
         const connected = platformsData.filter((p: Platform) => p.isConnected).map((p: Platform) => p.type);
         setSelectedPlatforms(connected);
-        
-        // Set single platform to first connected
-        if (connected.length > 0) {
-          setSinglePlatform(connected[0]);
-        }
-      } else {
-        console.error('Failed to fetch platforms:', await platformsRes.text());
+        if (connected.length > 0) setSinglePlatform(connected[0]);
       }
 
       if (intelligenceRes.ok) {
         const intelligenceData = await intelligenceRes.json();
-        console.log('Intelligence loaded:', intelligenceData);
         setIntelligence(intelligenceData);
         setTone(intelligenceData.defaultTone || 'professional');
-      } else {
-        console.error('Failed to fetch intelligence:', await intelligenceRes.text());
       }
     } catch (err) {
-      console.error('Error loading data:', err);
       setError(err instanceof Error ? err.message : 'Failed to load data');
     } finally {
       setIsLoading(false);
@@ -494,17 +150,12 @@ export default function EnhancedGeneratePage() {
 
     try {
       setIsPlanLoading(true);
-
       const res = await fetch(`/api/generate/plan?companyId=${companyId}&period=${period}&platforms=${selectedPlatforms.join(',')}`);
       
       if (res.ok) {
         const planData = await res.json();
         setContentPlan(planData);
-        
-        // Set custom post count to recommended if not already set
-        if (customPostCount === null) {
-          setCustomPostCount(planData.volume.recommended);
-        }
+        if (customPostCount === null) setCustomPostCount(planData.volume.recommended);
       }
     } catch (err) {
       console.error('Failed to fetch content plan:', err);
@@ -513,9 +164,7 @@ export default function EnhancedGeneratePage() {
     }
   }, [companyId, period, selectedPlatforms, customPostCount]);
 
-  useEffect(() => {
-    fetchCompanyData();
-  }, [fetchCompanyData]);
+  useEffect(() => { fetchCompanyData(); }, [fetchCompanyData]);
 
   useEffect(() => {
     if (mode === 'bulk' && selectedPlatforms.length > 0 && !isLoading) {
@@ -523,7 +172,6 @@ export default function EnhancedGeneratePage() {
     }
   }, [mode, selectedPlatforms, period, isLoading, fetchContentPlan]);
 
-  // Auto-dismiss notifications
   useEffect(() => {
     if (notification) {
       const timer = setTimeout(() => setNotification(null), 5000);
@@ -558,7 +206,6 @@ export default function EnhancedGeneratePage() {
     setNotification(null);
 
     try {
-      // Simulate progress steps
       const steps = [
         'Analyzing your brand intelligence...',
         'Optimizing content mix...',
@@ -587,19 +234,23 @@ export default function EnhancedGeneratePage() {
       });
 
       clearInterval(stepInterval);
-      
       const data = await res.json();
 
       if (res.ok && data.success) {
         setGenerationStep('Complete!');
+        const isAutoApprove = intelligence?.autoApprove;
         setNotification({
           type: 'success',
-          message: `Generated ${data.postsGenerated} posts! ${data.postsQueued} pending review, ${data.postsScheduled} auto-scheduled.`,
+          message: isAutoApprove 
+            ? `Generated ${data.postsGenerated} posts! Scheduled directly to your calendar.`
+            : `Generated ${data.postsGenerated} posts! Added to your review queue.`,
         });
         
-        // Redirect to queue after short delay
         setTimeout(() => {
-          router.push(`/companies/${companyId}/queue`);
+          router.push(isAutoApprove 
+            ? `/companies/${companyId}/calendar` 
+            : `/companies/${companyId}/queue`
+          );
         }, 2000);
       } else {
         throw new Error(data.error || 'Generation failed');
@@ -659,15 +310,11 @@ export default function EnhancedGeneratePage() {
   // COMPUTED VALUES
   // ============================================
 
-  // Get best days - prefer learned, fallback to preferred
   const bestDays = intelligence?.learnedBestDays?.length 
     ? intelligence.learnedBestDays 
     : intelligence?.preferredDays || [];
 
-  // Get top content type - prefer learned, fallback to default
   const topContentType = getTopContentType(intelligence?.topPerformingTypes);
-
-  // Connected platforms count
   const connectedPlatforms = platforms.filter(p => p.isConnected);
 
   // ============================================
@@ -769,16 +416,9 @@ export default function EnhancedGeneratePage() {
                 : 'bg-destructive/10 border-destructive/30 text-destructive'
             }`}
           >
-            {notification.type === 'success' ? (
-              <CheckCircle2 size={20} className="shrink-0" />
-            ) : (
-              <AlertCircle size={20} className="shrink-0" />
-            )}
+            {notification.type === 'success' ? <CheckCircle2 size={20} /> : <AlertCircle size={20} />}
             <p className="text-sm font-medium flex-1">{notification.message}</p>
-            <button 
-              onClick={() => setNotification(null)} 
-              className="p-1 rounded-md opacity-60 hover:opacity-100 hover:bg-black/5 transition-all"
-            >
+            <button onClick={() => setNotification(null)} className="p-1 rounded-md opacity-60 hover:opacity-100">
               <X size={16} />
             </button>
           </motion.div>
@@ -811,8 +451,7 @@ export default function EnhancedGeneratePage() {
           <button
             onClick={fetchContentPlan}
             disabled={isPlanLoading}
-            className="p-2.5 rounded-xl text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-all focus:outline-none focus:ring-2 focus:ring-primary/50"
-            title="Refresh plan"
+            className="p-2.5 rounded-xl text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-all"
           >
             <RefreshCw size={18} className={isPlanLoading ? 'animate-spin' : ''} />
           </button>
@@ -823,10 +462,8 @@ export default function EnhancedGeneratePage() {
       <div className="flex items-center gap-1 p-1.5 bg-secondary/50 rounded-xl w-fit">
         <button
           onClick={() => setMode('single')}
-          className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-all focus:outline-none focus:ring-2 focus:ring-primary/50 ${
-            mode === 'single'
-              ? 'bg-background text-foreground shadow-md'
-              : 'text-muted-foreground hover:text-foreground'
+          className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-all ${
+            mode === 'single' ? 'bg-background text-foreground shadow-md' : 'text-muted-foreground hover:text-foreground'
           }`}
         >
           <FileText size={16} />
@@ -834,10 +471,8 @@ export default function EnhancedGeneratePage() {
         </button>
         <button
           onClick={() => setMode('bulk')}
-          className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-all focus:outline-none focus:ring-2 focus:ring-primary/50 ${
-            mode === 'bulk'
-              ? 'bg-background text-foreground shadow-md'
-              : 'text-muted-foreground hover:text-foreground'
+          className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-all ${
+            mode === 'bulk' ? 'bg-background text-foreground shadow-md' : 'text-muted-foreground hover:text-foreground'
           }`}
         >
           <Zap size={16} />
@@ -870,12 +505,10 @@ export default function EnhancedGeneratePage() {
                   {connectedPlatforms.map(plat => {
                     const Icon = platformIcons[plat.type] || Globe;
                     const colors = platformColors[plat.type] || platformColors.LINKEDIN;
-                    const isSelected = singlePlatform === plat.type;
-
                     return (
                       <SelectionCard
                         key={plat.id}
-                        selected={isSelected}
+                        selected={singlePlatform === plat.type}
                         onClick={() => setSinglePlatform(plat.type)}
                         size="md"
                       >
@@ -898,12 +531,9 @@ export default function EnhancedGeneratePage() {
                     <AlertCircle size={18} />
                     <span className="text-sm font-semibold">No platforms connected</span>
                   </div>
-                  <p className="text-xs text-muted-foreground mt-1.5">
-                    Connect a platform to start generating content.
-                  </p>
                   <Link
                     href={`/companies/${companyId}/platforms`}
-                    className="inline-flex items-center gap-1.5 mt-3 px-3 py-1.5 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 text-xs font-medium hover:bg-amber-500/20 transition-colors"
+                    className="inline-flex items-center gap-1.5 mt-3 px-3 py-1.5 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 text-xs font-medium hover:bg-amber-500/20"
                   >
                     <PlusCircle size={14} />
                     Connect Platform
@@ -929,12 +559,7 @@ export default function EnhancedGeneratePage() {
               <label className="text-sm font-medium mb-3 block">Tone</label>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 {toneOptions.map(t => (
-                  <SelectionCard
-                    key={t.value}
-                    selected={tone === t.value}
-                    onClick={() => setTone(t.value)}
-                    size="sm"
-                  >
+                  <SelectionCard key={t.value} selected={tone === t.value} onClick={() => setTone(t.value)} size="sm">
                     <div className="text-left">
                       <p className="text-sm font-semibold">{t.label}</p>
                       <p className="text-[10px] text-muted-foreground mt-0.5">{t.description}</p>
@@ -944,11 +569,11 @@ export default function EnhancedGeneratePage() {
               </div>
             </div>
 
-            {/* Generate Button */}
+            {/* Generate Button - Single Mode */}
             <button
               onClick={handleSingleGenerate}
               disabled={isGenerating || !singlePlatform}
-              className="flex items-center justify-center gap-2 w-full px-6 py-4 rounded-xl bg-gradient-to-r from-primary to-purple-500 text-white font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-primary/25 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:ring-offset-2"
+              className="flex items-center justify-center gap-2 w-full px-6 py-4 rounded-xl bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-purple-500/25 focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:ring-offset-2"
             >
               {isGenerating ? (
                 <>
@@ -981,7 +606,7 @@ export default function EnhancedGeneratePage() {
                         navigator.clipboard.writeText(generatedContent);
                         setNotification({ type: 'success', message: 'Copied to clipboard!' });
                       }}
-                      className="px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 transition-colors"
+                      className="px-3 py-1.5 rounded-lg bg-green-500/10 text-green-600 dark:text-green-400 text-xs font-medium hover:bg-green-500/20"
                     >
                       Copy
                     </button>
@@ -1000,7 +625,7 @@ export default function EnhancedGeneratePage() {
 
       {mode === 'bulk' && (
         <div className="space-y-6">
-          {/* Intelligence Summary Card */}
+          {/* Intelligence Summary */}
           <ExpandableSection
             title="Intelligence Summary"
             subtitle="Data quality score and AI recommendations"
@@ -1024,7 +649,6 @@ export default function EnhancedGeneratePage() {
             }
           >
             <div className="space-y-4">
-              {/* Score Bar */}
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-medium">Data Quality</span>
@@ -1036,7 +660,6 @@ export default function EnhancedGeneratePage() {
                 {renderIntelligenceScore()}
               </div>
 
-              {/* Quick Stats */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <div className="p-3 rounded-xl bg-background/50 border border-border/40">
                   <div className="flex items-center gap-2 mb-1">
@@ -1044,9 +667,7 @@ export default function EnhancedGeneratePage() {
                     <span className="text-xs text-muted-foreground">Avg Engagement</span>
                   </div>
                   <p className="text-lg font-bold">
-                    {intelligence?.avgEngagementRate 
-                      ? `${intelligence.avgEngagementRate.toFixed(1)}%`
-                      : '0%'}
+                    {intelligence?.avgEngagementRate ? `${intelligence.avgEngagementRate.toFixed(1)}%` : '0%'}
                   </p>
                 </div>
                 <div className="p-3 rounded-xl bg-background/50 border border-border/40">
@@ -1054,40 +675,30 @@ export default function EnhancedGeneratePage() {
                     {renderTrendIcon(intelligence?.engagementTrend || null)}
                     <span className="text-xs text-muted-foreground">Trend</span>
                   </div>
-                  <p className="text-lg font-bold capitalize">
-                    {intelligence?.engagementTrend || 'Stable'}
-                  </p>
+                  <p className="text-lg font-bold capitalize">{intelligence?.engagementTrend || 'Stable'}</p>
                 </div>
                 <div className="p-3 rounded-xl bg-background/50 border border-border/40">
                   <div className="flex items-center gap-2 mb-1">
                     <BarChart3 size={14} className="text-muted-foreground" />
                     <span className="text-xs text-muted-foreground">Best Days</span>
                   </div>
-                  <p className="text-sm font-medium truncate">
-                    {formatDays(bestDays)}
-                  </p>
+                  <p className="text-sm font-medium truncate">{formatDays(bestDays)}</p>
                 </div>
                 <div className="p-3 rounded-xl bg-background/50 border border-border/40">
                   <div className="flex items-center gap-2 mb-1">
                     <Sparkles size={14} className="text-muted-foreground" />
                     <span className="text-xs text-muted-foreground">Top Type</span>
                   </div>
-                  <p className="text-sm font-medium truncate">
-                    {topContentType}
-                  </p>
+                  <p className="text-sm font-medium truncate">{topContentType}</p>
                 </div>
               </div>
 
-              {/* Recommendations */}
-              {contentPlan?.intelligenceHealth.recommendations && 
-               contentPlan.intelligenceHealth.recommendations.length > 0 && (
+              {contentPlan?.intelligenceHealth.recommendations && contentPlan.intelligenceHealth.recommendations.length > 0 && (
                 <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20">
                   <div className="flex items-start gap-2">
                     <Info size={16} className="text-amber-500 mt-0.5 shrink-0" />
                     <div>
-                      <p className="text-sm font-semibold text-amber-600 dark:text-amber-400">
-                        Recommendations
-                      </p>
+                      <p className="text-sm font-semibold text-amber-600 dark:text-amber-400">Recommendations</p>
                       <ul className="mt-2 space-y-1.5">
                         {contentPlan.intelligenceHealth.recommendations.map((rec, i) => (
                           <li key={i} className="text-xs text-muted-foreground flex items-start gap-2">
@@ -1120,25 +731,22 @@ export default function EnhancedGeneratePage() {
                 {platforms.map(plat => {
                   const Icon = platformIcons[plat.type] || Globe;
                   const colors = platformColors[plat.type] || platformColors.LINKEDIN;
-                  const isSelected = selectedPlatforms.includes(plat.type);
-                  const isConnected = plat.isConnected;
-
                   return (
                     <SelectionCard
                       key={plat.id}
-                      selected={isSelected}
-                      onClick={() => isConnected && togglePlatform(plat.type)}
-                      disabled={!isConnected}
+                      selected={selectedPlatforms.includes(plat.type)}
+                      onClick={() => plat.isConnected && togglePlatform(plat.type)}
+                      disabled={!plat.isConnected}
                       size="lg"
                     >
                       <div className="flex items-center gap-3">
-                        <div className={`p-2.5 rounded-xl ${isConnected ? colors.bg : 'bg-muted'}`}>
-                          <Icon size={24} className={isConnected ? colors.text : 'text-muted-foreground'} />
+                        <div className={`p-2.5 rounded-xl ${plat.isConnected ? colors.bg : 'bg-muted'}`}>
+                          <Icon size={24} className={plat.isConnected ? colors.text : 'text-muted-foreground'} />
                         </div>
                         <div className="text-left">
                           <p className="text-sm font-semibold">{plat.name}</p>
-                          <p className={`text-xs ${isConnected ? 'text-green-500' : 'text-muted-foreground'}`}>
-                            {isConnected ? '✓ Connected' : 'Not connected'}
+                          <p className={`text-xs ${plat.isConnected ? 'text-green-500' : 'text-muted-foreground'}`}>
+                            {plat.isConnected ? '✓ Connected' : 'Not connected'}
                           </p>
                         </div>
                       </div>
@@ -1152,12 +760,9 @@ export default function EnhancedGeneratePage() {
                   <AlertCircle size={18} />
                   <span className="text-sm font-semibold">No platforms found</span>
                 </div>
-                <p className="text-xs text-muted-foreground mt-1.5">
-                  Connect a social media platform to start generating content.
-                </p>
                 <Link
                   href={`/companies/${companyId}/platforms`}
-                  className="inline-flex items-center gap-1.5 mt-3 px-3 py-1.5 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 text-xs font-medium hover:bg-amber-500/20 transition-colors"
+                  className="inline-flex items-center gap-1.5 mt-3 px-3 py-1.5 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 text-xs font-medium hover:bg-amber-500/20"
                 >
                   <PlusCircle size={14} />
                   Connect Platform
@@ -1188,21 +793,19 @@ export default function EnhancedGeneratePage() {
             <div className="grid grid-cols-3 gap-3">
               {(Object.keys(periodConfig) as GenerationPeriod[]).map(p => {
                 const config = periodConfig[p];
-                const isSelected = period === p;
-                
                 return (
                   <SelectionCard
                     key={p}
-                    selected={isSelected}
+                    selected={period === p}
                     onClick={() => {
                       setPeriod(p);
-                      setCustomPostCount(null); // Reset to let it recalculate
+                      setCustomPostCount(null);
                     }}
                     size="lg"
                   >
                     <div className="text-center">
                       <div className={`mx-auto w-10 h-10 rounded-xl flex items-center justify-center mb-2 ${
-                        isSelected ? 'bg-primary/20' : 'bg-secondary'
+                        period === p ? 'bg-primary/20' : 'bg-secondary'
                       }`}>
                         <span className="text-lg font-bold">{config.days}</span>
                       </div>
@@ -1231,7 +834,6 @@ export default function EnhancedGeneratePage() {
               }
             >
               <div className="space-y-4">
-                {/* Breakdown */}
                 <div className="p-4 rounded-xl bg-secondary/30 space-y-3">
                   <div className="flex justify-between text-sm">
                     <span>Base (your setting)</span>
@@ -1269,13 +871,12 @@ export default function EnhancedGeneratePage() {
                   </div>
                 </div>
 
-                {/* Custom Override */}
                 <div className="flex items-center justify-between p-4 rounded-xl bg-background border border-border/60">
                   <span className="text-sm font-medium">Override post count:</span>
                   <div className="flex items-center gap-3">
                     <button
                       onClick={() => setCustomPostCount(Math.max(1, (customPostCount || contentPlan.volume.recommended) - 1))}
-                      className="p-2 rounded-lg border border-border/60 hover:bg-secondary/50 transition-colors focus:outline-none focus:ring-2 focus:ring-primary/50"
+                      className="p-2 rounded-lg border border-border/60 hover:bg-secondary/50 transition-colors"
                     >
                       <Minus size={16} />
                     </button>
@@ -1284,7 +885,7 @@ export default function EnhancedGeneratePage() {
                     </span>
                     <button
                       onClick={() => setCustomPostCount((customPostCount || contentPlan.volume.recommended) + 1)}
-                      className="p-2 rounded-lg border border-border/60 hover:bg-secondary/50 transition-colors focus:outline-none focus:ring-2 focus:ring-primary/50"
+                      className="p-2 rounded-lg border border-border/60 hover:bg-secondary/50 transition-colors"
                     >
                       <Plus size={16} />
                     </button>
@@ -1301,7 +902,6 @@ export default function EnhancedGeneratePage() {
                   </button>
                 )}
 
-                {/* Platform Distribution */}
                 {Object.keys(contentPlan.volume.breakdown.platformDistribution).length > 0 && (
                   <div>
                     <p className="text-sm font-medium mb-3">Platform Distribution</p>
@@ -1310,10 +910,7 @@ export default function EnhancedGeneratePage() {
                         const Icon = platformIcons[plat] || Globe;
                         const colors = platformColors[plat] || platformColors.LINKEDIN;
                         return (
-                          <div
-                            key={plat}
-                            className={`flex items-center gap-2 px-3 py-2 rounded-lg ${colors.bg} border ${colors.border}`}
-                          >
+                          <div key={plat} className={`flex items-center gap-2 px-3 py-2 rounded-lg ${colors.bg} border ${colors.border}`}>
                             <Icon size={16} className={colors.text} />
                             <span className="text-sm font-semibold">{count} posts</span>
                           </div>
@@ -1323,7 +920,6 @@ export default function EnhancedGeneratePage() {
                   </div>
                 )}
 
-                {/* Reasoning */}
                 <div className="text-xs text-muted-foreground space-y-1.5">
                   {contentPlan.volume.reasoning.map((reason, i) => (
                     <p key={i} className="flex items-start gap-2">
@@ -1340,9 +936,7 @@ export default function EnhancedGeneratePage() {
           {contentPlan && (
             <ExpandableSection
               title="Content Strategy"
-              subtitle={contentPlan.contentMix.isPerformanceBased
-                ? '✨ Optimized based on your performance'
-                : 'Using industry best practices'}
+              subtitle={contentPlan.contentMix.isPerformanceBased ? '✨ Optimized based on your performance' : 'Using industry best practices'}
               icon={<Target size={20} className="text-purple-500" />}
               iconBg="bg-purple-500/10"
               expanded={expandedSections.mix}
@@ -1361,11 +955,7 @@ export default function EnhancedGeneratePage() {
                 <div className="p-4 rounded-xl bg-secondary/30">
                   <p className="text-sm font-semibold mb-3">Topic Selection</p>
                   <div className="grid grid-cols-2 gap-3">
-                    <SelectionCard
-                      selected={topicMode === 'auto'}
-                      onClick={() => setTopicMode('auto')}
-                      size="md"
-                    >
+                    <SelectionCard selected={topicMode === 'auto'} onClick={() => setTopicMode('auto')} size="md">
                       <div className="flex items-center gap-3">
                         <div className={`p-2 rounded-lg ${topicMode === 'auto' ? 'bg-primary/20' : 'bg-secondary'}`}>
                           <Brain size={20} className={topicMode === 'auto' ? 'text-primary' : 'text-muted-foreground'} />
@@ -1376,11 +966,7 @@ export default function EnhancedGeneratePage() {
                         </div>
                       </div>
                     </SelectionCard>
-                    <SelectionCard
-                      selected={topicMode === 'manual'}
-                      onClick={() => setTopicMode('manual')}
-                      size="md"
-                    >
+                    <SelectionCard selected={topicMode === 'manual'} onClick={() => setTopicMode('manual')} size="md">
                       <div className="flex items-center gap-3">
                         <div className={`p-2 rounded-lg ${topicMode === 'manual' ? 'bg-primary/20' : 'bg-secondary'}`}>
                           <Settings2 size={20} className={topicMode === 'manual' ? 'text-primary' : 'text-muted-foreground'} />
@@ -1406,15 +992,15 @@ export default function EnhancedGeneratePage() {
                           onChange={(e) => setManualTopics(e.target.value)}
                           placeholder="Enter topics (one per line)..."
                           rows={4}
-                          className="w-full px-4 py-3 rounded-xl border-2 border-border/60 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
+                          className="w-full px-4 py-3 rounded-xl border-2 border-border/60 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
                         />
                       </motion.div>
                     )}
                   </AnimatePresence>
                 </div>
 
-                                {/* Content Mix Breakdown */}
-                                <div className="space-y-3">
+                {/* Content Mix Breakdown */}
+                <div className="space-y-3">
                   {Object.entries(contentPlan.contentMix.mix).map(([type, item]) => {
                     const Icon = contentTypeIcons[type] || FileText;
                     const colorClass = contentTypeColors[type] || 'text-gray-500 bg-gray-500/10';
@@ -1443,10 +1029,7 @@ export default function EnhancedGeneratePage() {
                               {item.suggestedTopics.length > 0 && topicMode === 'auto' && (
                                 <div className="flex flex-wrap gap-1.5 mt-2">
                                   {item.suggestedTopics.map((topic, i) => (
-                                    <span
-                                      key={i}
-                                      className="px-2 py-1 rounded-lg bg-secondary/80 text-[11px] font-medium"
-                                    >
+                                    <span key={i} className="px-2 py-1 rounded-lg bg-secondary/80 text-[11px] font-medium">
                                       {topic}
                                     </span>
                                   ))}
@@ -1469,14 +1052,13 @@ export default function EnhancedGeneratePage() {
                   <p className="text-xs font-semibold mb-3 text-muted-foreground uppercase tracking-wide">Marketing Funnel Distribution</p>
                   <div className="flex items-center gap-1">
                     {Object.entries(contentPlan.contentMix.funnelBreakdown).map(([stage, count], index, arr) => {
-                      const widthPercent = (count / contentPlan.contentMix.totalPosts) * 100;
-                      const colors = {
+                      const colors: Record<string, string> = {
                         awareness: 'bg-blue-500',
                         consideration: 'bg-purple-500',
                         conversion: 'bg-green-500',
                         retention: 'bg-amber-500',
                       };
-                      const bgColor = colors[stage as keyof typeof colors] || 'bg-gray-500';
+                      const bgColor = colors[stage] || 'bg-gray-500';
                       
                       return (
                         <div key={stage} className="flex-1 text-center">
@@ -1539,7 +1121,7 @@ export default function EnhancedGeneratePage() {
                         key={i}
                         initial={{ opacity: 0, x: -10 }}
                         animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: i * 0.05 }}
+                        transition={{ delay: i * 0.03 }}
                         className="flex items-center gap-3 p-3 rounded-xl bg-background border border-border/40 hover:border-border hover:shadow-sm transition-all"
                       >
                         <div className="text-center min-w-[70px] p-2 rounded-lg bg-secondary/50">
@@ -1582,16 +1164,16 @@ export default function EnhancedGeneratePage() {
             </ExpandableSection>
           )}
 
-          {/* Generate Button */}
+          {/* Generate Button - Bulk Mode */}
           <motion.div 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="rounded-xl border-2 border-primary/30 bg-gradient-to-r from-primary/5 via-purple-500/5 to-primary/5 p-6 shadow-lg shadow-primary/5"
+            className="rounded-xl border-2 border-violet-500/30 bg-gradient-to-r from-violet-500/10 via-purple-500/10 to-violet-500/10 p-6 shadow-lg"
           >
             <div className="flex flex-col md:flex-row items-center justify-between gap-4">
               <div>
                 <h3 className="text-lg font-bold flex items-center gap-2">
-                  <Zap className="text-primary" size={20} />
+                  <Zap className="text-violet-500" size={20} />
                   Ready to Generate
                 </h3>
                 <p className="text-sm text-muted-foreground mt-1">
@@ -1609,7 +1191,7 @@ export default function EnhancedGeneratePage() {
               <button
                 onClick={handleBulkGenerate}
                 disabled={isGenerating || selectedPlatforms.length === 0 || isPlanLoading}
-                className="relative flex items-center gap-3 px-8 py-4 rounded-xl bg-gradient-to-r from-primary to-purple-500 text-white font-bold text-lg hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-xl shadow-primary/30 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:ring-offset-2 group"
+                className="relative flex items-center gap-3 px-8 py-4 rounded-xl bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 text-white font-bold text-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-xl shadow-violet-500/30 focus:outline-none focus:ring-2 focus:ring-violet-500/50 focus:ring-offset-2 group"
               >
                 {isGenerating ? (
                   <>
@@ -1631,26 +1213,67 @@ export default function EnhancedGeneratePage() {
             </div>
           </motion.div>
 
-          {/* Auto-approve info */}
-          {intelligence?.autoApprove && (
-            <div className="flex items-center gap-2 p-4 rounded-xl bg-green-500/10 border border-green-500/20">
-              <CheckCircle2 size={18} className="text-green-500 shrink-0" />
-              <div>
-                <p className="text-sm font-medium text-green-600 dark:text-green-400">Auto-approve is enabled</p>
-                <p className="text-xs text-muted-foreground">Generated posts will be automatically scheduled for publishing.</p>
+          {/* Workflow Info - Shows where posts will go */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Manual Review Option */}
+            <div className={`flex items-start gap-3 p-4 rounded-xl border-2 transition-all ${
+              !intelligence?.autoApprove 
+                ? 'bg-blue-500/10 border-blue-500/30' 
+                : 'bg-secondary/30 border-border/40 opacity-60'
+            }`}>
+              <div className={`p-2 rounded-lg ${!intelligence?.autoApprove ? 'bg-blue-500/20' : 'bg-secondary'}`}>
+                <ClipboardList size={20} className={!intelligence?.autoApprove ? 'text-blue-500' : 'text-muted-foreground'} />
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-semibold">Review Queue</p>
+                  {!intelligence?.autoApprove && (
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-500/20 text-blue-600 dark:text-blue-400">
+                      Active
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Posts go to your queue for review before scheduling. You approve each post manually.
+                </p>
               </div>
             </div>
-          )}
 
-          {!intelligence?.autoApprove && (
-            <div className="flex items-center gap-2 p-4 rounded-xl bg-blue-500/10 border border-blue-500/20">
-              <Info size={18} className="text-blue-500 shrink-0" />
-              <div>
-                <p className="text-sm font-medium text-blue-600 dark:text-blue-400">Manual approval required</p>
-                <p className="text-xs text-muted-foreground">Generated posts will go to your review queue before publishing.</p>
+            {/* Auto Schedule Option */}
+            <div className={`flex items-start gap-3 p-4 rounded-xl border-2 transition-all ${
+              intelligence?.autoApprove 
+                ? 'bg-green-500/10 border-green-500/30' 
+                : 'bg-secondary/30 border-border/40 opacity-60'
+            }`}>
+              <div className={`p-2 rounded-lg ${intelligence?.autoApprove ? 'bg-green-500/20' : 'bg-secondary'}`}>
+                <CalendarCheck size={20} className={intelligence?.autoApprove ? 'text-green-500' : 'text-muted-foreground'} />
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-semibold">Auto-Schedule</p>
+                  {intelligence?.autoApprove && (
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-500/20 text-green-600 dark:text-green-400">
+                      Active
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Posts are scheduled directly to your calendar and will publish automatically.
+                </p>
               </div>
             </div>
-          )}
+          </div>
+
+          {/* Link to change setting */}
+          <div className="text-center">
+            <Link 
+              href={`/companies/${companyId}/settings`}
+              className="text-xs text-muted-foreground hover:text-primary transition-colors inline-flex items-center gap-1"
+            >
+              <Settings2 size={12} />
+              Change approval settings in Company Settings
+            </Link>
+          </div>
         </div>
       )}
     </div>
