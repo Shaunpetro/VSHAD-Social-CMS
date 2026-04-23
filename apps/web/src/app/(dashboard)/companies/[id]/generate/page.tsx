@@ -13,6 +13,7 @@ import {
   TrendingUp,
   TrendingDown,
   Minus,
+  Plus,
   Calendar,
   Target,
   BarChart3,
@@ -40,6 +41,8 @@ import {
   Check,
   X,
   PlusCircle,
+  Flame,
+  Clock,
 } from 'lucide-react';
 
 // ============================================
@@ -166,12 +169,12 @@ const platformIcons: Record<string, typeof Linkedin> = {
   WORDPRESS: Globe,
 };
 
-const platformColors: Record<string, { bg: string; border: string; text: string }> = {
-  LINKEDIN: { bg: 'bg-[#0A66C2]/10', border: 'border-[#0A66C2]/30', text: 'text-[#0A66C2]' },
-  FACEBOOK: { bg: 'bg-[#1877F2]/10', border: 'border-[#1877F2]/30', text: 'text-[#1877F2]' },
-  TWITTER: { bg: 'bg-[#1DA1F2]/10', border: 'border-[#1DA1F2]/30', text: 'text-[#1DA1F2]' },
-  INSTAGRAM: { bg: 'bg-[#E4405F]/10', border: 'border-[#E4405F]/30', text: 'text-[#E4405F]' },
-  WORDPRESS: { bg: 'bg-[#21759B]/10', border: 'border-[#21759B]/30', text: 'text-[#21759B]' },
+const platformColors: Record<string, { bg: string; border: string; text: string; ring: string }> = {
+  LINKEDIN: { bg: 'bg-[#0A66C2]/10', border: 'border-[#0A66C2]', text: 'text-[#0A66C2]', ring: 'ring-[#0A66C2]/30' },
+  FACEBOOK: { bg: 'bg-[#1877F2]/10', border: 'border-[#1877F2]', text: 'text-[#1877F2]', ring: 'ring-[#1877F2]/30' },
+  TWITTER: { bg: 'bg-[#1DA1F2]/10', border: 'border-[#1DA1F2]', text: 'text-[#1DA1F2]', ring: 'ring-[#1DA1F2]/30' },
+  INSTAGRAM: { bg: 'bg-[#E4405F]/10', border: 'border-[#E4405F]', text: 'text-[#E4405F]', ring: 'ring-[#E4405F]/30' },
+  WORDPRESS: { bg: 'bg-[#21759B]/10', border: 'border-[#21759B]', text: 'text-[#21759B]', ring: 'ring-[#21759B]/30' },
 };
 
 const contentTypeIcons: Record<string, typeof FileText> = {
@@ -196,11 +199,18 @@ const contentTypeColors: Record<string, string> = {
   motivational: 'text-red-500 bg-red-500/10',
 };
 
-const periodLabels: Record<GenerationPeriod, { label: string; description: string }> = {
-  weekly: { label: 'Weekly', description: '7 days of content' },
-  biweekly: { label: 'Bi-weekly', description: '14 days of content' },
-  monthly: { label: 'Monthly', description: '30 days of content' },
+const periodConfig: Record<GenerationPeriod, { label: string; description: string; days: number }> = {
+  weekly: { label: 'Weekly', description: '7 days of content', days: 7 },
+  biweekly: { label: 'Bi-weekly', description: '14 days of content', days: 14 },
+  monthly: { label: 'Monthly', description: '30 days of content', days: 30 },
 };
+
+const toneOptions = [
+  { value: 'professional', label: 'Professional', description: 'Polished & business-focused' },
+  { value: 'casual', label: 'Casual', description: 'Relaxed & approachable' },
+  { value: 'friendly', label: 'Friendly', description: 'Warm & personable' },
+  { value: 'authoritative', label: 'Authoritative', description: 'Expert & confident' },
+];
 
 // ============================================
 // HELPER FUNCTIONS
@@ -222,6 +232,164 @@ function getTopContentType(types: Record<string, number> | null | undefined): st
 }
 
 // ============================================
+// REUSABLE COMPONENTS
+// ============================================
+
+// Selection Card Component - Consistent across all selections
+interface SelectionCardProps {
+  selected: boolean;
+  onClick: () => void;
+  disabled?: boolean;
+  children: React.ReactNode;
+  className?: string;
+  size?: 'sm' | 'md' | 'lg';
+  accentColor?: string;
+}
+
+function SelectionCard({ 
+  selected, 
+  onClick, 
+  disabled, 
+  children, 
+  className = '', 
+  size = 'md',
+  accentColor,
+}: SelectionCardProps) {
+  const sizeClasses = {
+    sm: 'px-3 py-2',
+    md: 'px-4 py-3',
+    lg: 'px-5 py-4',
+  };
+
+  const borderColor = accentColor || 'border-primary';
+  const bgColor = accentColor ? accentColor.replace('border-', 'bg-').replace(']', '/10]') : 'bg-primary/5';
+
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={`
+        relative rounded-xl border-2 transition-all duration-200
+        focus:outline-none focus:ring-2 focus:ring-primary/50 focus:ring-offset-2 focus:ring-offset-background
+        ${sizeClasses[size]}
+        ${disabled 
+          ? 'opacity-50 cursor-not-allowed border-border/40 bg-muted/20' 
+          : selected
+            ? `${borderColor} ${bgColor} shadow-lg shadow-primary/10 scale-[1.02]`
+            : 'border-border/60 hover:border-border hover:bg-secondary/30 hover:scale-[1.01]'
+        }
+        ${className}
+      `}
+    >
+      {/* Selection indicator */}
+      {selected && !disabled && (
+        <motion.div 
+          initial={{ scale: 0 }}
+          animate={{ scale: 1 }}
+          className="absolute -top-1.5 -right-1.5 p-0.5 rounded-full bg-primary text-primary-foreground shadow-md"
+        >
+          <Check size={10} strokeWidth={3} />
+        </motion.div>
+      )}
+      {children}
+    </button>
+  );
+}
+
+// Expandable Section Component
+interface ExpandableSectionProps {
+  title: string;
+  subtitle: string;
+  icon: React.ReactNode;
+  iconBg: string;
+  expanded: boolean;
+  onToggle: () => void;
+  badge?: React.ReactNode;
+  hasData?: boolean;
+  children: React.ReactNode;
+}
+
+function ExpandableSection({ 
+  title, 
+  subtitle, 
+  icon, 
+  iconBg, 
+  expanded, 
+  onToggle, 
+  badge,
+  hasData = true,
+  children 
+}: ExpandableSectionProps) {
+  return (
+    <div className={`
+      rounded-xl border-2 transition-all duration-200
+      ${expanded 
+        ? 'border-primary/40 bg-gradient-to-br from-primary/5 via-transparent to-purple-500/5 shadow-lg shadow-primary/5' 
+        : hasData 
+          ? 'border-border/60 bg-card hover:border-primary/20 hover:shadow-md'
+          : 'border-border/40 bg-card/50'
+      }
+    `}>
+      <button
+        onClick={onToggle}
+        className="flex items-center justify-between w-full p-6 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary/30 rounded-xl"
+      >
+        <div className="flex items-center gap-3">
+          <div className={`p-2.5 rounded-xl ${iconBg} transition-transform duration-200 ${expanded ? 'scale-110' : ''}`}>
+            {icon}
+          </div>
+          <div className="text-left">
+            <div className="flex items-center gap-2">
+              <h2 className="text-lg font-semibold">{title}</h2>
+              {badge}
+            </div>
+            <p className="text-sm text-muted-foreground">{subtitle}</p>
+          </div>
+        </div>
+        <div className={`p-1.5 rounded-lg transition-all duration-200 ${expanded ? 'bg-primary/10 rotate-0' : 'hover:bg-secondary rotate-0'}`}>
+          <ChevronDown size={20} className={`transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`} />
+        </div>
+      </button>
+
+      <AnimatePresence>
+        {expanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.25, ease: 'easeInOut' }}
+            className="overflow-hidden"
+          >
+            <div className="px-6 pb-6 pt-0">
+              <div className="h-px bg-gradient-to-r from-transparent via-border to-transparent mb-4" />
+              {children}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// Confidence Badge Component
+function ConfidenceBadge({ confidence }: { confidence: 'high' | 'medium' | 'low' }) {
+  const config = {
+    high: { icon: Flame, text: 'High confidence', className: 'text-green-500 bg-green-500/10' },
+    medium: { icon: TrendingUp, text: 'Medium', className: 'text-amber-500 bg-amber-500/10' },
+    low: { icon: Info, text: 'Low', className: 'text-muted-foreground bg-secondary' },
+  };
+  
+  const { icon: Icon, text, className } = config[confidence];
+  
+  return (
+    <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium ${className}`}>
+      <Icon size={10} />
+      {text}
+    </span>
+  );
+}
+
+// ============================================
 // MAIN COMPONENT
 // ============================================
 
@@ -240,6 +408,7 @@ export default function EnhancedGeneratePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isPlanLoading, setIsPlanLoading] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [generationStep, setGenerationStep] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
@@ -385,9 +554,24 @@ export default function EnhancedGeneratePage() {
     }
 
     setIsGenerating(true);
+    setGenerationStep('Preparing content strategy...');
     setNotification(null);
 
     try {
+      // Simulate progress steps
+      const steps = [
+        'Analyzing your brand intelligence...',
+        'Optimizing content mix...',
+        'Generating AI content...',
+        'Scheduling posts...',
+      ];
+      
+      let stepIndex = 0;
+      const stepInterval = setInterval(() => {
+        stepIndex = (stepIndex + 1) % steps.length;
+        setGenerationStep(steps[stepIndex]);
+      }, 2000);
+
       const res = await fetch('/api/generate/bulk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -402,9 +586,12 @@ export default function EnhancedGeneratePage() {
         }),
       });
 
+      clearInterval(stepInterval);
+      
       const data = await res.json();
 
       if (res.ok && data.success) {
+        setGenerationStep('Complete!');
         setNotification({
           type: 'success',
           message: `Generated ${data.postsGenerated} posts! ${data.postsQueued} pending review, ${data.postsScheduled} auto-scheduled.`,
@@ -424,6 +611,7 @@ export default function EnhancedGeneratePage() {
       });
     } finally {
       setIsGenerating(false);
+      setGenerationStep('');
     }
   };
 
@@ -494,20 +682,22 @@ export default function EnhancedGeneratePage() {
       return 'text-red-500';
     };
     const getScoreBg = (s: number) => {
-      if (s >= 70) return 'bg-green-500';
-      if (s >= 40) return 'bg-amber-500';
-      return 'bg-red-500';
+      if (s >= 70) return 'bg-gradient-to-r from-green-500 to-emerald-500';
+      if (s >= 40) return 'bg-gradient-to-r from-amber-500 to-orange-500';
+      return 'bg-gradient-to-r from-red-500 to-rose-500';
     };
 
     return (
       <div className="flex items-center gap-3">
-        <div className="flex-1 h-2 bg-secondary rounded-full overflow-hidden">
-          <div 
-            className={`h-full ${getScoreBg(score)} transition-all duration-500`}
-            style={{ width: `${score}%` }}
+        <div className="flex-1 h-3 bg-secondary rounded-full overflow-hidden shadow-inner">
+          <motion.div 
+            initial={{ width: 0 }}
+            animate={{ width: `${score}%` }}
+            transition={{ duration: 1, ease: 'easeOut' }}
+            className={`h-full ${getScoreBg(score)} rounded-full`}
           />
         </div>
-        <span className={`text-lg font-bold ${getScoreColor(score)}`}>{score}%</span>
+        <span className={`text-xl font-bold ${getScoreColor(score)}`}>{score}%</span>
       </div>
     );
   };
@@ -525,9 +715,15 @@ export default function EnhancedGeneratePage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="flex flex-col items-center gap-3">
-          <Loader2 size={32} className="animate-spin text-primary" />
-          <p className="text-sm text-muted-foreground">Loading intelligence data...</p>
+        <div className="flex flex-col items-center gap-4">
+          <div className="relative">
+            <div className="w-16 h-16 rounded-full border-4 border-primary/20" />
+            <div className="absolute inset-0 w-16 h-16 rounded-full border-4 border-primary border-t-transparent animate-spin" />
+          </div>
+          <div className="text-center">
+            <p className="text-sm font-medium">Loading intelligence data...</p>
+            <p className="text-xs text-muted-foreground mt-1">Preparing your smart content generator</p>
+          </div>
         </div>
       </div>
     );
@@ -537,10 +733,16 @@ export default function EnhancedGeneratePage() {
     return (
       <div className="p-6">
         <div className="flex flex-col items-center justify-center py-24 text-center">
-          <AlertCircle size={48} className="text-destructive/50 mb-4" />
-          <h3 className="text-lg font-medium">{error || 'Company not found'}</h3>
-          <Link href="/companies" className="mt-4 text-sm text-primary hover:underline flex items-center gap-1">
-            <ArrowLeft size={14} />
+          <div className="p-4 rounded-full bg-destructive/10 mb-4">
+            <AlertCircle size={48} className="text-destructive" />
+          </div>
+          <h3 className="text-lg font-semibold">{error || 'Company not found'}</h3>
+          <p className="text-sm text-muted-foreground mt-1">Please try again or contact support</p>
+          <Link 
+            href="/companies" 
+            className="mt-6 inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-secondary hover:bg-secondary/80 text-sm font-medium transition-colors"
+          >
+            <ArrowLeft size={16} />
             Back to Companies
           </Link>
         </div>
@@ -558,18 +760,25 @@ export default function EnhancedGeneratePage() {
       <AnimatePresence>
         {notification && (
           <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            className={`flex items-center gap-3 p-4 rounded-lg border ${
+            initial={{ opacity: 0, y: -20, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -20, scale: 0.95 }}
+            className={`flex items-center gap-3 p-4 rounded-xl border-2 shadow-lg ${
               notification.type === 'success'
-                ? 'bg-green-500/10 border-green-500/20 text-green-600 dark:text-green-400'
-                : 'bg-destructive/10 border-destructive/20 text-destructive'
+                ? 'bg-green-500/10 border-green-500/30 text-green-600 dark:text-green-400'
+                : 'bg-destructive/10 border-destructive/30 text-destructive'
             }`}
           >
-            {notification.type === 'success' ? <CheckCircle2 size={18} /> : <AlertCircle size={18} />}
+            {notification.type === 'success' ? (
+              <CheckCircle2 size={20} className="shrink-0" />
+            ) : (
+              <AlertCircle size={20} className="shrink-0" />
+            )}
             <p className="text-sm font-medium flex-1">{notification.message}</p>
-            <button onClick={() => setNotification(null)} className="opacity-60 hover:opacity-100">
+            <button 
+              onClick={() => setNotification(null)} 
+              className="p-1 rounded-md opacity-60 hover:opacity-100 hover:bg-black/5 transition-all"
+            >
               <X size={16} />
             </button>
           </motion.div>
@@ -578,10 +787,10 @@ export default function EnhancedGeneratePage() {
 
       {/* Header */}
       <div>
-        <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
           <Link
             href={`/companies/${companyId}`}
-            className="hover:text-foreground transition-colors flex items-center gap-1"
+            className="hover:text-foreground transition-colors flex items-center gap-1.5 px-2 py-1 -ml-2 rounded-md hover:bg-secondary"
           >
             <ArrowLeft size={14} />
             {company.name}
@@ -589,18 +798,20 @@ export default function EnhancedGeneratePage() {
         </div>
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
-              <Brain className="text-primary" size={28} />
+            <h1 className="text-2xl font-bold tracking-tight flex items-center gap-3">
+              <div className="p-2 rounded-xl bg-gradient-to-br from-primary/20 to-purple-500/20">
+                <Brain className="text-primary" size={28} />
+              </div>
               Smart Content Generator
             </h1>
-            <p className="text-sm text-muted-foreground mt-1">
+            <p className="text-sm text-muted-foreground mt-2">
               AI-powered content creation based on your performance data
             </p>
           </div>
           <button
             onClick={fetchContentPlan}
             disabled={isPlanLoading}
-            className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors"
+            className="p-2.5 rounded-xl text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-all focus:outline-none focus:ring-2 focus:ring-primary/50"
             title="Refresh plan"
           >
             <RefreshCw size={18} className={isPlanLoading ? 'animate-spin' : ''} />
@@ -609,12 +820,12 @@ export default function EnhancedGeneratePage() {
       </div>
 
       {/* Mode Toggle */}
-      <div className="flex items-center gap-2 p-1 bg-secondary/30 rounded-lg w-fit">
+      <div className="flex items-center gap-1 p-1.5 bg-secondary/50 rounded-xl w-fit">
         <button
           onClick={() => setMode('single')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+          className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-all focus:outline-none focus:ring-2 focus:ring-primary/50 ${
             mode === 'single'
-              ? 'bg-background text-foreground shadow-sm'
+              ? 'bg-background text-foreground shadow-md'
               : 'text-muted-foreground hover:text-foreground'
           }`}
         >
@@ -623,9 +834,9 @@ export default function EnhancedGeneratePage() {
         </button>
         <button
           onClick={() => setMode('bulk')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+          className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-all focus:outline-none focus:ring-2 focus:ring-primary/50 ${
             mode === 'bulk'
-              ? 'bg-background text-foreground shadow-sm'
+              ? 'bg-background text-foreground shadow-md'
               : 'text-muted-foreground hover:text-foreground'
           }`}
         >
@@ -640,50 +851,61 @@ export default function EnhancedGeneratePage() {
 
       {mode === 'single' && (
         <div className="space-y-6">
-          <div className="rounded-xl border border-border/60 bg-card p-6 space-y-4">
-            <h2 className="text-lg font-semibold">Generate Single Post</h2>
+          <div className="rounded-xl border-2 border-border/60 bg-card p-6 space-y-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-primary/10">
+                <FileText size={20} className="text-primary" />
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold">Generate Single Post</h2>
+                <p className="text-sm text-muted-foreground">Create one piece of content</p>
+              </div>
+            </div>
 
             {/* Platform Selection */}
             <div>
-              <label className="text-sm font-medium mb-2 block">Platform</label>
+              <label className="text-sm font-medium mb-3 block">Select Platform</label>
               {connectedPlatforms.length > 0 ? (
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-3">
                   {connectedPlatforms.map(plat => {
                     const Icon = platformIcons[plat.type] || Globe;
                     const colors = platformColors[plat.type] || platformColors.LINKEDIN;
                     const isSelected = singlePlatform === plat.type;
 
                     return (
-                      <button
+                      <SelectionCard
                         key={plat.id}
+                        selected={isSelected}
                         onClick={() => setSinglePlatform(plat.type)}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-all ${
-                          isSelected
-                            ? `${colors.bg} ${colors.border} ${colors.text} border-2`
-                            : 'border-border/60 hover:border-border'
-                        }`}
+                        size="md"
                       >
-                        <Icon size={18} />
-                        <span className="text-sm font-medium">{plat.name}</span>
-                        {isSelected && <Check size={14} />}
-                      </button>
+                        <div className="flex items-center gap-3">
+                          <div className={`p-2 rounded-lg ${colors.bg}`}>
+                            <Icon size={20} className={colors.text} />
+                          </div>
+                          <div className="text-left">
+                            <p className="text-sm font-semibold">{plat.name}</p>
+                            <p className="text-xs text-muted-foreground">Connected</p>
+                          </div>
+                        </div>
+                      </SelectionCard>
                     );
                   })}
                 </div>
               ) : (
-                <div className="p-4 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                <div className="p-4 rounded-xl bg-amber-500/10 border-2 border-amber-500/20">
                   <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
-                    <AlertCircle size={16} />
-                    <span className="text-sm font-medium">No platforms connected</span>
+                    <AlertCircle size={18} />
+                    <span className="text-sm font-semibold">No platforms connected</span>
                   </div>
-                  <p className="text-xs text-muted-foreground mt-1">
+                  <p className="text-xs text-muted-foreground mt-1.5">
                     Connect a platform to start generating content.
                   </p>
                   <Link
                     href={`/companies/${companyId}/platforms`}
-                    className="inline-flex items-center gap-1 mt-2 text-xs text-primary hover:underline"
+                    className="inline-flex items-center gap-1.5 mt-3 px-3 py-1.5 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 text-xs font-medium hover:bg-amber-500/20 transition-colors"
                   >
-                    <PlusCircle size={12} />
+                    <PlusCircle size={14} />
                     Connect Platform
                   </Link>
                 </div>
@@ -698,26 +920,26 @@ export default function EnhancedGeneratePage() {
                 value={singleTopic}
                 onChange={(e) => setSingleTopic(e.target.value)}
                 placeholder="Leave empty for AI to choose based on your pillars..."
-                className="w-full px-4 py-2 rounded-lg border border-border/60 bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
+                className="w-full px-4 py-3 rounded-xl border-2 border-border/60 bg-background focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
               />
             </div>
 
             {/* Tone */}
             <div>
-              <label className="text-sm font-medium mb-2 block">Tone</label>
-              <div className="flex flex-wrap gap-2">
-                {['professional', 'casual', 'friendly', 'authoritative'].map(t => (
-                  <button
-                    key={t}
-                    onClick={() => setTone(t)}
-                    className={`px-4 py-2 rounded-lg border text-sm font-medium transition-colors ${
-                      tone === t
-                        ? 'bg-primary text-primary-foreground border-primary'
-                        : 'border-border/60 hover:border-border'
-                    }`}
+              <label className="text-sm font-medium mb-3 block">Tone</label>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {toneOptions.map(t => (
+                  <SelectionCard
+                    key={t.value}
+                    selected={tone === t.value}
+                    onClick={() => setTone(t.value)}
+                    size="sm"
                   >
-                    {capitalizeFirst(t)}
-                  </button>
+                    <div className="text-left">
+                      <p className="text-sm font-semibold">{t.label}</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">{t.description}</p>
+                    </div>
+                  </SelectionCard>
                 ))}
               </div>
             </div>
@@ -726,36 +948,48 @@ export default function EnhancedGeneratePage() {
             <button
               onClick={handleSingleGenerate}
               disabled={isGenerating || !singlePlatform}
-              className="flex items-center justify-center gap-2 w-full px-6 py-3 rounded-lg bg-primary text-primary-foreground font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
+              className="flex items-center justify-center gap-2 w-full px-6 py-4 rounded-xl bg-gradient-to-r from-primary to-purple-500 text-white font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-primary/25 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:ring-offset-2"
             >
               {isGenerating ? (
                 <>
-                  <Loader2 size={18} className="animate-spin" />
+                  <Loader2 size={20} className="animate-spin" />
                   Generating...
                 </>
               ) : (
                 <>
-                  <Sparkles size={18} />
+                  <Sparkles size={20} />
                   Generate Post
                 </>
               )}
             </button>
 
             {/* Generated Content */}
-            {generatedContent && (
-              <div className="mt-4 p-4 rounded-lg bg-secondary/30 border border-border/60">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-medium">Generated Content</span>
-                  <button
-                    onClick={() => navigator.clipboard.writeText(generatedContent)}
-                    className="text-xs text-primary hover:underline"
-                  >
-                    Copy
-                  </button>
-                </div>
-                <p className="text-sm whitespace-pre-wrap">{generatedContent}</p>
-              </div>
-            )}
+            <AnimatePresence>
+              {generatedContent && (
+                <motion.div 
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="p-5 rounded-xl bg-gradient-to-br from-green-500/5 to-emerald-500/5 border-2 border-green-500/20"
+                >
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 size={18} className="text-green-500" />
+                      <span className="text-sm font-semibold">Generated Content</span>
+                    </div>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(generatedContent);
+                        setNotification({ type: 'success', message: 'Copied to clipboard!' });
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 transition-colors"
+                    >
+                      Copy
+                    </button>
+                  </div>
+                  <p className="text-sm whitespace-pre-wrap leading-relaxed">{generatedContent}</p>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </div>
       )}
@@ -767,115 +1001,120 @@ export default function EnhancedGeneratePage() {
       {mode === 'bulk' && (
         <div className="space-y-6">
           {/* Intelligence Summary Card */}
-          <div className="rounded-xl border border-border/60 bg-gradient-to-br from-primary/5 to-purple-500/5 p-6">
-            <button
-              onClick={() => toggleSection('intelligence')}
-              className="flex items-center justify-between w-full"
-            >
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-primary/10">
-                  <Brain size={20} className="text-primary" />
+          <ExpandableSection
+            title="Intelligence Summary"
+            subtitle="Data quality score and AI recommendations"
+            icon={<Brain size={20} className="text-primary" />}
+            iconBg="bg-gradient-to-br from-primary/20 to-purple-500/20"
+            expanded={expandedSections.intelligence}
+            onToggle={() => toggleSection('intelligence')}
+            hasData={!!intelligence}
+            badge={
+              contentPlan?.intelligenceHealth.overallScore ? (
+                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                  contentPlan.intelligenceHealth.overallScore >= 70 
+                    ? 'bg-green-500/10 text-green-500'
+                    : contentPlan.intelligenceHealth.overallScore >= 40
+                      ? 'bg-amber-500/10 text-amber-500'
+                      : 'bg-red-500/10 text-red-500'
+                }`}>
+                  {contentPlan.intelligenceHealth.overallScore}% Ready
+                </span>
+              ) : null
+            }
+          >
+            <div className="space-y-4">
+              {/* Score Bar */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium">Data Quality</span>
+                  <span className="text-xs text-muted-foreground flex items-center gap-1">
+                    <Clock size={12} />
+                    {contentPlan?.intelligenceHealth.dataAge.daysOfData || 0} days of data
+                  </span>
                 </div>
-                <div className="text-left">
-                  <h2 className="text-lg font-semibold">Intelligence Summary</h2>
-                  <p className="text-sm text-muted-foreground">
-                    Data quality score and AI recommendations
+                {renderIntelligenceScore()}
+              </div>
+
+              {/* Quick Stats */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="p-3 rounded-xl bg-background/50 border border-border/40">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Target size={14} className="text-muted-foreground" />
+                    <span className="text-xs text-muted-foreground">Avg Engagement</span>
+                  </div>
+                  <p className="text-lg font-bold">
+                    {intelligence?.avgEngagementRate 
+                      ? `${intelligence.avgEngagementRate.toFixed(1)}%`
+                      : '0%'}
+                  </p>
+                </div>
+                <div className="p-3 rounded-xl bg-background/50 border border-border/40">
+                  <div className="flex items-center gap-2 mb-1">
+                    {renderTrendIcon(intelligence?.engagementTrend || null)}
+                    <span className="text-xs text-muted-foreground">Trend</span>
+                  </div>
+                  <p className="text-lg font-bold capitalize">
+                    {intelligence?.engagementTrend || 'Stable'}
+                  </p>
+                </div>
+                <div className="p-3 rounded-xl bg-background/50 border border-border/40">
+                  <div className="flex items-center gap-2 mb-1">
+                    <BarChart3 size={14} className="text-muted-foreground" />
+                    <span className="text-xs text-muted-foreground">Best Days</span>
+                  </div>
+                  <p className="text-sm font-medium truncate">
+                    {formatDays(bestDays)}
+                  </p>
+                </div>
+                <div className="p-3 rounded-xl bg-background/50 border border-border/40">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Sparkles size={14} className="text-muted-foreground" />
+                    <span className="text-xs text-muted-foreground">Top Type</span>
+                  </div>
+                  <p className="text-sm font-medium truncate">
+                    {topContentType}
                   </p>
                 </div>
               </div>
-              {expandedSections.intelligence ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-            </button>
 
-            <AnimatePresence>
-              {expandedSections.intelligence && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  className="overflow-hidden"
-                >
-                  <div className="mt-4 space-y-4">
-                    {/* Score Bar */}
+              {/* Recommendations */}
+              {contentPlan?.intelligenceHealth.recommendations && 
+               contentPlan.intelligenceHealth.recommendations.length > 0 && (
+                <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20">
+                  <div className="flex items-start gap-2">
+                    <Info size={16} className="text-amber-500 mt-0.5 shrink-0" />
                     <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-medium">Data Quality</span>
-                        <span className="text-xs text-muted-foreground">
-                          {contentPlan?.intelligenceHealth.dataAge.daysOfData || 0} days of data
-                        </span>
-                      </div>
-                      {renderIntelligenceScore()}
+                      <p className="text-sm font-semibold text-amber-600 dark:text-amber-400">
+                        Recommendations
+                      </p>
+                      <ul className="mt-2 space-y-1.5">
+                        {contentPlan.intelligenceHealth.recommendations.map((rec, i) => (
+                          <li key={i} className="text-xs text-muted-foreground flex items-start gap-2">
+                            <span className="text-amber-500 mt-0.5">•</span>
+                            {rec}
+                          </li>
+                        ))}
+                      </ul>
                     </div>
-
-                    {/* Quick Stats */}
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                      <div className="p-3 rounded-lg bg-background/50 border border-border/40">
-                        <div className="flex items-center gap-2 mb-1">
-                          <Target size={14} className="text-muted-foreground" />
-                          <span className="text-xs text-muted-foreground">Avg Engagement</span>
-                        </div>
-                        <p className="text-lg font-bold">
-                          {intelligence?.avgEngagementRate 
-                            ? `${intelligence.avgEngagementRate.toFixed(1)}%`
-                            : '0%'}
-                        </p>
-                      </div>
-                      <div className="p-3 rounded-lg bg-background/50 border border-border/40">
-                        <div className="flex items-center gap-2 mb-1">
-                          {renderTrendIcon(intelligence?.engagementTrend || null)}
-                          <span className="text-xs text-muted-foreground">Trend</span>
-                        </div>
-                        <p className="text-lg font-bold capitalize">
-                          {intelligence?.engagementTrend || 'Stable'}
-                        </p>
-                      </div>
-                      <div className="p-3 rounded-lg bg-background/50 border border-border/40">
-                        <div className="flex items-center gap-2 mb-1">
-                          <BarChart3 size={14} className="text-muted-foreground" />
-                          <span className="text-xs text-muted-foreground">Best Days</span>
-                        </div>
-                        <p className="text-sm font-medium truncate">
-                          {formatDays(bestDays)}
-                        </p>
-                      </div>
-                      <div className="p-3 rounded-lg bg-background/50 border border-border/40">
-                        <div className="flex items-center gap-2 mb-1">
-                          <Sparkles size={14} className="text-muted-foreground" />
-                          <span className="text-xs text-muted-foreground">Top Type</span>
-                        </div>
-                        <p className="text-sm font-medium truncate">
-                          {topContentType}
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Recommendations */}
-                    {contentPlan?.intelligenceHealth.recommendations && 
-                     contentPlan.intelligenceHealth.recommendations.length > 0 && (
-                      <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
-                        <div className="flex items-start gap-2">
-                          <Info size={16} className="text-amber-500 mt-0.5 shrink-0" />
-                          <div>
-                            <p className="text-sm font-medium text-amber-600 dark:text-amber-400">
-                              Recommendations
-                            </p>
-                            <ul className="mt-1 space-y-1">
-                              {contentPlan.intelligenceHealth.recommendations.map((rec, i) => (
-                                <li key={i} className="text-xs text-muted-foreground">• {rec}</li>
-                              ))}
-                            </ul>
-                          </div>
-                        </div>
-                      </div>
-                    )}
                   </div>
-                </motion.div>
+                </div>
               )}
-            </AnimatePresence>
-          </div>
+            </div>
+          </ExpandableSection>
 
           {/* Platform Selection */}
-          <div className="rounded-xl border border-border/60 bg-card p-6">
-            <h2 className="text-lg font-semibold mb-4">Platforms</h2>
+          <div className="rounded-xl border-2 border-border/60 bg-card p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2 rounded-lg bg-blue-500/10">
+                <Globe size={20} className="text-blue-500" />
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold">Platforms</h2>
+                <p className="text-sm text-muted-foreground">Select where to post</p>
+              </div>
+            </div>
+            
             {platforms.length > 0 ? (
               <div className="flex flex-wrap gap-3">
                 {platforms.map(plat => {
@@ -885,457 +1124,484 @@ export default function EnhancedGeneratePage() {
                   const isConnected = plat.isConnected;
 
                   return (
-                    <button
+                    <SelectionCard
                       key={plat.id}
+                      selected={isSelected}
                       onClick={() => isConnected && togglePlatform(plat.type)}
                       disabled={!isConnected}
-                      className={`relative flex items-center gap-3 px-4 py-3 rounded-xl border-2 transition-all ${
-                        !isConnected
-                          ? 'opacity-50 cursor-not-allowed border-border/40'
-                          : isSelected
-                          ? `${colors.bg} ${colors.border} ${colors.text}`
-                          : 'border-border/60 hover:border-border'
-                      }`}
+                      size="lg"
                     >
-                      <Icon size={24} className={isConnected ? colors.text : 'text-muted-foreground'} />
-                      <div className="text-left">
-                        <p className="text-sm font-medium">{plat.name}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {isConnected ? 'Connected' : 'Not connected'}
-                        </p>
-                      </div>
-                      {isSelected && (
-                        <div className={`absolute -top-1 -right-1 p-0.5 rounded-full ${colors.bg} border-2 ${colors.border}`}>
-                          <Check size={12} className={colors.text} />
+                      <div className="flex items-center gap-3">
+                        <div className={`p-2.5 rounded-xl ${isConnected ? colors.bg : 'bg-muted'}`}>
+                          <Icon size={24} className={isConnected ? colors.text : 'text-muted-foreground'} />
                         </div>
-                      )}
-                    </button>
+                        <div className="text-left">
+                          <p className="text-sm font-semibold">{plat.name}</p>
+                          <p className={`text-xs ${isConnected ? 'text-green-500' : 'text-muted-foreground'}`}>
+                            {isConnected ? '✓ Connected' : 'Not connected'}
+                          </p>
+                        </div>
+                      </div>
+                    </SelectionCard>
                   );
                 })}
               </div>
             ) : (
-              <div className="p-4 rounded-lg bg-amber-500/10 border border-amber-500/20">
+              <div className="p-4 rounded-xl bg-amber-500/10 border-2 border-amber-500/20">
                 <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
-                  <AlertCircle size={16} />
-                  <span className="text-sm font-medium">No platforms found</span>
+                  <AlertCircle size={18} />
+                  <span className="text-sm font-semibold">No platforms found</span>
                 </div>
-                <p className="text-xs text-muted-foreground mt-1">
+                <p className="text-xs text-muted-foreground mt-1.5">
                   Connect a social media platform to start generating content.
                 </p>
                 <Link
                   href={`/companies/${companyId}/platforms`}
-                  className="inline-flex items-center gap-1 mt-2 text-xs text-primary hover:underline"
+                  className="inline-flex items-center gap-1.5 mt-3 px-3 py-1.5 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 text-xs font-medium hover:bg-amber-500/20 transition-colors"
                 >
-                  <PlusCircle size={12} />
+                  <PlusCircle size={14} />
                   Connect Platform
                 </Link>
               </div>
             )}
+            
             {platforms.length > 0 && selectedPlatforms.length === 0 && (
-              <p className="text-sm text-amber-500 mt-3 flex items-center gap-2">
-                <AlertCircle size={14} />
+              <p className="text-sm text-amber-500 mt-4 flex items-center gap-2 p-3 rounded-lg bg-amber-500/10">
+                <AlertCircle size={16} />
                 Select at least one platform to continue
               </p>
             )}
           </div>
 
           {/* Period Selection */}
-          <div className="rounded-xl border border-border/60 bg-card p-6">
-            <h2 className="text-lg font-semibold mb-4">Generation Period</h2>
-            <div className="flex flex-wrap gap-3">
-              {(Object.keys(periodLabels) as GenerationPeriod[]).map(p => (
-                <button
-                  key={p}
-                  onClick={() => {
-                    setPeriod(p);
-                    setCustomPostCount(null); // Reset to let it recalculate
-                  }}
-                  className={`flex flex-col items-start px-4 py-3 rounded-xl border-2 transition-all ${
-                    period === p
-                      ? 'bg-primary/10 border-primary text-primary'
-                      : 'border-border/60 hover:border-border'
-                  }`}
-                >
-                  <span className="text-sm font-semibold">{periodLabels[p].label}</span>
-                  <span className="text-xs text-muted-foreground">{periodLabels[p].description}</span>
-                </button>
-              ))}
+          <div className="rounded-xl border-2 border-border/60 bg-card p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2 rounded-lg bg-purple-500/10">
+                <Calendar size={20} className="text-purple-500" />
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold">Generation Period</h2>
+                <p className="text-sm text-muted-foreground">How much content to create</p>
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-3 gap-3">
+              {(Object.keys(periodConfig) as GenerationPeriod[]).map(p => {
+                const config = periodConfig[p];
+                const isSelected = period === p;
+                
+                return (
+                  <SelectionCard
+                    key={p}
+                    selected={isSelected}
+                    onClick={() => {
+                      setPeriod(p);
+                      setCustomPostCount(null); // Reset to let it recalculate
+                    }}
+                    size="lg"
+                  >
+                    <div className="text-center">
+                      <div className={`mx-auto w-10 h-10 rounded-xl flex items-center justify-center mb-2 ${
+                        isSelected ? 'bg-primary/20' : 'bg-secondary'
+                      }`}>
+                        <span className="text-lg font-bold">{config.days}</span>
+                      </div>
+                      <p className="text-sm font-semibold">{config.label}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{config.description}</p>
+                    </div>
+                  </SelectionCard>
+                );
+              })}
             </div>
           </div>
 
           {/* Volume Calculation */}
           {contentPlan && (
-            <div className="rounded-xl border border-border/60 bg-card p-6">
-              <button
-                onClick={() => toggleSection('volume')}
-                className="flex items-center justify-between w-full"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-blue-500/10">
-                    <BarChart3 size={20} className="text-blue-500" />
+            <ExpandableSection
+              title="Calculated Volume"
+              subtitle={`Recommended: ${contentPlan.volume.recommended} posts`}
+              icon={<BarChart3 size={20} className="text-blue-500" />}
+              iconBg="bg-blue-500/10"
+              expanded={expandedSections.volume}
+              onToggle={() => toggleSection('volume')}
+              badge={
+                <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-500/10 text-blue-500">
+                  {contentPlan.volume.recommended} posts
+                </span>
+              }
+            >
+              <div className="space-y-4">
+                {/* Breakdown */}
+                <div className="p-4 rounded-xl bg-secondary/30 space-y-3">
+                  <div className="flex justify-between text-sm">
+                    <span>Base (your setting)</span>
+                    <span className="font-semibold">{contentPlan.volume.breakdown.base}/week</span>
                   </div>
-                  <div className="text-left">
-                    <h2 className="text-lg font-semibold">Calculated Volume</h2>
-                    <p className="text-sm text-muted-foreground">
-                      Recommended: {contentPlan.volume.recommended} posts
-                    </p>
-                  </div>
-                </div>
-                {expandedSections.volume ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-              </button>
-
-              <AnimatePresence>
-                {expandedSections.volume && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: 'auto', opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    className="overflow-hidden"
-                  >
-                    <div className="mt-4 space-y-4">
-                      {/* Breakdown */}
-                      <div className="p-4 rounded-lg bg-secondary/30 space-y-2">
-                        <div className="flex justify-between text-sm">
-                          <span>Base (your setting)</span>
-                          <span className="font-medium">{contentPlan.volume.breakdown.base}/week</span>
-                        </div>
-                        {contentPlan.volume.breakdown.industryModifier !== 0 && (
-                          <div className="flex justify-between text-sm">
-                            <span>Industry adjustment</span>
-                            <span className={`font-medium ${contentPlan.volume.breakdown.industryModifier > 0 ? 'text-green-500' : 'text-red-500'}`}>
-                              {contentPlan.volume.breakdown.industryModifier > 0 ? '+' : ''}{contentPlan.volume.breakdown.industryModifier}
-                            </span>
-                          </div>
-                        )}
-                        {contentPlan.volume.breakdown.goalModifier !== 0 && (
-                          <div className="flex justify-between text-sm">
-                            <span>Goal modifier</span>
-                            <span className={`font-medium ${contentPlan.volume.breakdown.goalModifier > 0 ? 'text-green-500' : 'text-red-500'}`}>
-                              {contentPlan.volume.breakdown.goalModifier > 0 ? '+' : ''}{contentPlan.volume.breakdown.goalModifier}
-                            </span>
-                          </div>
-                        )}
-                        {contentPlan.volume.breakdown.performanceModifier !== 0 && (
-                          <div className="flex justify-between text-sm">
-                            <span>Performance trend</span>
-                            <span className={`font-medium ${contentPlan.volume.breakdown.performanceModifier > 0 ? 'text-green-500' : 'text-red-500'}`}>
-                              {contentPlan.volume.breakdown.performanceModifier > 0 ? '+' : ''}{contentPlan.volume.breakdown.performanceModifier}
-                            </span>
-                          </div>
-                        )}
-                        <div className="border-t border-border/60 pt-2 mt-2">
-                          <div className="flex justify-between text-sm font-semibold">
-                            <span>Total for {period}</span>
-                            <span className="text-primary">{contentPlan.volume.recommended} posts</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Custom Override */}
-                      <div className="flex items-center gap-4">
-                        <span className="text-sm">Override post count:</span>
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => setCustomPostCount(Math.max(1, (customPostCount || contentPlan.volume.recommended) - 1))}
-                            className="p-1 rounded border border-border/60 hover:bg-secondary/50"
-                          >
-                            <Minus size={16} />
-                          </button>
-                          <span className="w-12 text-center font-bold">
-                            {customPostCount || contentPlan.volume.recommended}
-                          </span>
-                          <button
-                            onClick={() => setCustomPostCount((customPostCount || contentPlan.volume.recommended) + 1)}
-                            className="p-1 rounded border border-border/60 hover:bg-secondary/50"
-                          >
-                            <TrendingUp size={16} />
-                          </button>
-                        </div>
-                        {customPostCount !== contentPlan.volume.recommended && customPostCount !== null && (
-                          <button
-                            onClick={() => setCustomPostCount(null)}
-                            className="text-xs text-primary hover:underline"
-                          >
-                            Reset to recommended
-                          </button>
-                        )}
-                      </div>
-
-                      {/* Platform Distribution */}
-                      {Object.keys(contentPlan.volume.breakdown.platformDistribution).length > 0 && (
-                        <div>
-                          <p className="text-sm font-medium mb-2">Platform Distribution</p>
-                          <div className="flex flex-wrap gap-2">
-                            {Object.entries(contentPlan.volume.breakdown.platformDistribution).map(([plat, count]) => {
-                              const Icon = platformIcons[plat] || Globe;
-                              const colors = platformColors[plat] || platformColors.LINKEDIN;
-                              return (
-                                <div
-                                  key={plat}
-                                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg ${colors.bg}`}
-                                >
-                                  <Icon size={14} className={colors.text} />
-                                  <span className="text-sm font-medium">{count} posts</span>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Reasoning */}
-                      <div className="text-xs text-muted-foreground space-y-1">
-                        {contentPlan.volume.reasoning.map((reason, i) => (
-                          <p key={i}>• {reason}</p>
-                        ))}
-                      </div>
+                  {contentPlan.volume.breakdown.industryModifier !== 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span>Industry adjustment</span>
+                      <span className={`font-semibold ${contentPlan.volume.breakdown.industryModifier > 0 ? 'text-green-500' : 'text-red-500'}`}>
+                        {contentPlan.volume.breakdown.industryModifier > 0 ? '+' : ''}{contentPlan.volume.breakdown.industryModifier}
+                      </span>
                     </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-          )}
-
-          {/* Content Mix */}
-          {contentPlan && (
-            <div className="rounded-xl border border-border/60 bg-card p-6">
-              <button
-                onClick={() => toggleSection('mix')}
-                className="flex items-center justify-between w-full"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-purple-500/10">
-                    <Target size={20} className="text-purple-500" />
-                  </div>
-                  <div className="text-left">
-                    <h2 className="text-lg font-semibold">Content Strategy</h2>
-                    <p className="text-sm text-muted-foreground">
-                      {contentPlan.contentMix.isPerformanceBased
-                        ? '✨ Optimized based on your performance'
-                        : 'Using industry best practices'}
-                    </p>
-                  </div>
-                </div>
-                {expandedSections.mix ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-              </button>
-
-              <AnimatePresence>
-                {expandedSections.mix && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: 'auto', opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    className="overflow-hidden"
-                  >
-                    <div className="mt-4 space-y-4">
-                      {/* Topic Mode Selection */}
-                      <div className="p-4 rounded-lg bg-secondary/30">
-                        <p className="text-sm font-medium mb-3">Topic Selection</p>
-                        <div className="flex gap-3">
-                          <button
-                            onClick={() => setTopicMode('auto')}
-                            className={`flex-1 flex items-center gap-2 p-3 rounded-lg border-2 transition-all ${
-                              topicMode === 'auto'
-                                ? 'bg-primary/10 border-primary'
-                                : 'border-border/60 hover:border-border'
-                            }`}
-                          >
-                            <Brain size={18} className={topicMode === 'auto' ? 'text-primary' : 'text-muted-foreground'} />
-                            <div className="text-left">
-                              <p className="text-sm font-medium">AI Optimized</p>
-                              <p className="text-xs text-muted-foreground">Based on performance & pillars</p>
-                            </div>
-                          </button>
-                          <button
-                            onClick={() => setTopicMode('manual')}
-                            className={`flex-1 flex items-center gap-2 p-3 rounded-lg border-2 transition-all ${
-                              topicMode === 'manual'
-                                ? 'bg-primary/10 border-primary'
-                                : 'border-border/60 hover:border-border'
-                            }`}
-                          >
-                            <Settings2 size={18} className={topicMode === 'manual' ? 'text-primary' : 'text-muted-foreground'} />
-                            <div className="text-left">
-                              <p className="text-sm font-medium">Manual</p>
-                              <p className="text-xs text-muted-foreground">I&apos;ll provide topics</p>
-                            </div>
-                          </button>
-                        </div>
-
-                        {topicMode === 'manual' && (
-                          <div className="mt-3">
-                            <textarea
-                              value={manualTopics}
-                              onChange={(e) => setManualTopics(e.target.value)}
-                              placeholder="Enter topics (one per line)..."
-                              rows={4}
-                              className="w-full px-3 py-2 rounded-lg border border-border/60 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-                            />
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Content Mix Breakdown */}
-                      <div className="space-y-3">
-                        {Object.entries(contentPlan.contentMix.mix).map(([type, item]) => {
-                          const Icon = contentTypeIcons[type] || FileText;
-                          const colorClass = contentTypeColors[type] || 'text-gray-500 bg-gray-500/10';
-
-                          return (
-                            <div key={type} className="p-3 rounded-lg bg-secondary/20 border border-border/40">
-                              <div className="flex items-start justify-between">
-                                <div className="flex items-start gap-3">
-                                  <div className={`p-2 rounded-lg ${colorClass}`}>
-                                    <Icon size={16} />
-                                  </div>
-                                  <div>
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-sm font-semibold capitalize">{type}</span>
-                                      <span className="text-xs text-muted-foreground">({item.percentage}%)</span>
-                                      {item.performanceNote && (
-                                        <span className="text-xs">{item.performanceNote}</span>
-                                      )}
-                                    </div>
-                                    <p className="text-xs text-muted-foreground mt-0.5">{item.reasoning}</p>
-                                    {item.suggestedTopics.length > 0 && topicMode === 'auto' && (
-                                      <div className="flex flex-wrap gap-1 mt-2">
-                                        {item.suggestedTopics.map((topic, i) => (
-                                          <span
-                                            key={i}
-                                            className="px-2 py-0.5 rounded-full bg-secondary text-[10px]"
-                                          >
-                                            {topic}
-                                          </span>
-                                        ))}
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                                <span className="text-lg font-bold text-primary">{item.count}</span>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-
-                      {/* Funnel Breakdown */}
-                      <div className="p-3 rounded-lg bg-gradient-to-r from-blue-500/10 via-purple-500/10 to-green-500/10">
-                        <p className="text-xs font-medium mb-2">Marketing Funnel Distribution</p>
-                        <div className="flex items-center gap-2">
-                          {Object.entries(contentPlan.contentMix.funnelBreakdown).map(([stage, count]) => (
-                            <div key={stage} className="flex-1 text-center">
-                              <p className="text-lg font-bold">{count}</p>
-                              <p className="text-[10px] text-muted-foreground capitalize">{stage}</p>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Adjustments */}
-                      {contentPlan.contentMix.adjustments.length > 0 && (
-                        <div className="text-xs text-muted-foreground space-y-1">
-                          <p className="font-medium">AI Adjustments:</p>
-                          {contentPlan.contentMix.adjustments.map((adj, i) => (
-                            <p key={i}>• {adj}</p>
-                          ))}
-                        </div>
-                      )}
+                  )}
+                  {contentPlan.volume.breakdown.goalModifier !== 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span>Goal modifier</span>
+                      <span className={`font-semibold ${contentPlan.volume.breakdown.goalModifier > 0 ? 'text-green-500' : 'text-red-500'}`}>
+                        {contentPlan.volume.breakdown.goalModifier > 0 ? '+' : ''}{contentPlan.volume.breakdown.goalModifier}
+                      </span>
                     </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-          )}
-
-          {/* Schedule Preview */}
-          {contentPlan && contentPlan.schedule.slots.length > 0 && (
-            <div className="rounded-xl border border-border/60 bg-card p-6">
-              <button
-                onClick={() => toggleSection('schedule')}
-                className="flex items-center justify-between w-full"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-green-500/10">
-                    <Calendar size={20} className="text-green-500" />
-                  </div>
-                  <div className="text-left">
-                    <h2 className="text-lg font-semibold">Schedule Preview</h2>
-                    <p className="text-sm text-muted-foreground">
-                      {contentPlan.schedule.slots.length} posts planned
-                    </p>
+                  )}
+                  {contentPlan.volume.breakdown.performanceModifier !== 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span>Performance trend</span>
+                      <span className={`font-semibold ${contentPlan.volume.breakdown.performanceModifier > 0 ? 'text-green-500' : 'text-red-500'}`}>
+                        {contentPlan.volume.breakdown.performanceModifier > 0 ? '+' : ''}{contentPlan.volume.breakdown.performanceModifier}
+                      </span>
+                    </div>
+                  )}
+                  <div className="border-t border-border/60 pt-3 mt-3">
+                    <div className="flex justify-between text-sm font-semibold">
+                      <span>Total for {period}</span>
+                      <span className="text-primary text-lg">{contentPlan.volume.recommended} posts</span>
+                    </div>
                   </div>
                 </div>
-                {expandedSections.schedule ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-              </button>
 
-              <AnimatePresence>
-                {expandedSections.schedule && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: 'auto', opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    className="overflow-hidden"
+                {/* Custom Override */}
+                <div className="flex items-center justify-between p-4 rounded-xl bg-background border border-border/60">
+                  <span className="text-sm font-medium">Override post count:</span>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => setCustomPostCount(Math.max(1, (customPostCount || contentPlan.volume.recommended) - 1))}
+                      className="p-2 rounded-lg border border-border/60 hover:bg-secondary/50 transition-colors focus:outline-none focus:ring-2 focus:ring-primary/50"
+                    >
+                      <Minus size={16} />
+                    </button>
+                    <span className="w-12 text-center text-xl font-bold">
+                      {customPostCount || contentPlan.volume.recommended}
+                    </span>
+                    <button
+                      onClick={() => setCustomPostCount((customPostCount || contentPlan.volume.recommended) + 1)}
+                      className="p-2 rounded-lg border border-border/60 hover:bg-secondary/50 transition-colors focus:outline-none focus:ring-2 focus:ring-primary/50"
+                    >
+                      <Plus size={16} />
+                    </button>
+                  </div>
+                </div>
+                
+                {customPostCount !== contentPlan.volume.recommended && customPostCount !== null && (
+                  <button
+                    onClick={() => setCustomPostCount(null)}
+                    className="text-xs text-primary hover:underline flex items-center gap-1"
                   >
-                    <div className="mt-4 space-y-2 max-h-80 overflow-y-auto">
-                      {contentPlan.schedule.slots.map((slot, i) => {
-                        const Icon = platformIcons[slot.platform] || Globe;
-                        const colors = platformColors[slot.platform] || platformColors.LINKEDIN;
-                        const typeColor = contentTypeColors[slot.contentType] || 'bg-gray-500/10 text-gray-500';
+                    <RefreshCw size={12} />
+                    Reset to recommended
+                  </button>
+                )}
 
+                {/* Platform Distribution */}
+                {Object.keys(contentPlan.volume.breakdown.platformDistribution).length > 0 && (
+                  <div>
+                    <p className="text-sm font-medium mb-3">Platform Distribution</p>
+                    <div className="flex flex-wrap gap-2">
+                      {Object.entries(contentPlan.volume.breakdown.platformDistribution).map(([plat, count]) => {
+                        const Icon = platformIcons[plat] || Globe;
+                        const colors = platformColors[plat] || platformColors.LINKEDIN;
                         return (
                           <div
-                            key={i}
-                            className="flex items-center gap-3 p-3 rounded-lg bg-secondary/20 border border-border/40"
+                            key={plat}
+                            className={`flex items-center gap-2 px-3 py-2 rounded-lg ${colors.bg} border ${colors.border}`}
                           >
-                            <div className="text-center min-w-[60px]">
-                              <p className="text-xs text-muted-foreground capitalize">{slot.dayOfWeek.slice(0, 3)}</p>
-                              <p className="text-sm font-medium">{slot.time}</p>
-                            </div>
-                            <div className={`p-1.5 rounded ${colors.bg}`}>
-                              <Icon size={14} className={colors.text} />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2">
-                                <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${typeColor}`}>
-                                  {slot.contentType}
-                                </span>
-                                {slot.confidence === 'high' && (
-                                  <span className="text-[10px] text-green-500">🔥 High confidence</span>
-                                )}
-                              </div>
-                              {slot.topic && (
-                                <p className="text-xs text-muted-foreground truncate mt-0.5">{slot.topic}</p>
-                              )}
-                            </div>
+                            <Icon size={16} className={colors.text} />
+                            <span className="text-sm font-semibold">{count} posts</span>
                           </div>
                         );
                       })}
                     </div>
-
-                    {contentPlan.schedule.optimizationNotes.length > 0 && (
-                      <div className="mt-3 text-xs text-muted-foreground">
-                        {contentPlan.schedule.optimizationNotes.map((note, i) => (
-                          <p key={i}>• {note}</p>
-                        ))}
-                      </div>
-                    )}
-                  </motion.div>
+                  </div>
                 )}
-              </AnimatePresence>
-            </div>
+
+                {/* Reasoning */}
+                <div className="text-xs text-muted-foreground space-y-1.5">
+                  {contentPlan.volume.reasoning.map((reason, i) => (
+                    <p key={i} className="flex items-start gap-2">
+                      <span className="text-primary mt-0.5">•</span>
+                      {reason}
+                    </p>
+                  ))}
+                </div>
+              </div>
+            </ExpandableSection>
+          )}
+
+          {/* Content Mix */}
+          {contentPlan && (
+            <ExpandableSection
+              title="Content Strategy"
+              subtitle={contentPlan.contentMix.isPerformanceBased
+                ? '✨ Optimized based on your performance'
+                : 'Using industry best practices'}
+              icon={<Target size={20} className="text-purple-500" />}
+              iconBg="bg-purple-500/10"
+              expanded={expandedSections.mix}
+              onToggle={() => toggleSection('mix')}
+              badge={
+                contentPlan.contentMix.isPerformanceBased ? (
+                  <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-500/10 text-green-500 flex items-center gap-1">
+                    <Sparkles size={10} />
+                    AI Optimized
+                  </span>
+                ) : null
+              }
+            >
+              <div className="space-y-4">
+                {/* Topic Mode Selection */}
+                <div className="p-4 rounded-xl bg-secondary/30">
+                  <p className="text-sm font-semibold mb-3">Topic Selection</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <SelectionCard
+                      selected={topicMode === 'auto'}
+                      onClick={() => setTopicMode('auto')}
+                      size="md"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`p-2 rounded-lg ${topicMode === 'auto' ? 'bg-primary/20' : 'bg-secondary'}`}>
+                          <Brain size={20} className={topicMode === 'auto' ? 'text-primary' : 'text-muted-foreground'} />
+                        </div>
+                        <div className="text-left">
+                          <p className="text-sm font-semibold">AI Optimized</p>
+                          <p className="text-xs text-muted-foreground">Based on performance & pillars</p>
+                        </div>
+                      </div>
+                    </SelectionCard>
+                    <SelectionCard
+                      selected={topicMode === 'manual'}
+                      onClick={() => setTopicMode('manual')}
+                      size="md"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`p-2 rounded-lg ${topicMode === 'manual' ? 'bg-primary/20' : 'bg-secondary'}`}>
+                          <Settings2 size={20} className={topicMode === 'manual' ? 'text-primary' : 'text-muted-foreground'} />
+                        </div>
+                        <div className="text-left">
+                          <p className="text-sm font-semibold">Manual</p>
+                          <p className="text-xs text-muted-foreground">I&apos;ll provide topics</p>
+                        </div>
+                      </div>
+                    </SelectionCard>
+                  </div>
+
+                  <AnimatePresence>
+                    {topicMode === 'manual' && (
+                      <motion.div 
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="mt-4"
+                      >
+                        <textarea
+                          value={manualTopics}
+                          onChange={(e) => setManualTopics(e.target.value)}
+                          placeholder="Enter topics (one per line)..."
+                          rows={4}
+                          className="w-full px-4 py-3 rounded-xl border-2 border-border/60 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
+                        />
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+
+                                {/* Content Mix Breakdown */}
+                                <div className="space-y-3">
+                  {Object.entries(contentPlan.contentMix.mix).map(([type, item]) => {
+                    const Icon = contentTypeIcons[type] || FileText;
+                    const colorClass = contentTypeColors[type] || 'text-gray-500 bg-gray-500/10';
+
+                    return (
+                      <div key={type} className="p-4 rounded-xl bg-background border border-border/40 hover:border-border transition-colors">
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-start gap-3">
+                            <div className={`p-2.5 rounded-xl ${colorClass}`}>
+                              <Icon size={18} />
+                            </div>
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-sm font-bold capitalize">{type}</span>
+                                <span className="px-2 py-0.5 rounded-full bg-secondary text-xs font-medium">
+                                  {item.percentage}%
+                                </span>
+                                {item.performanceNote && (
+                                  <span className="text-xs text-green-500 flex items-center gap-1">
+                                    <TrendingUp size={10} />
+                                    {item.performanceNote}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-xs text-muted-foreground mt-1">{item.reasoning}</p>
+                              {item.suggestedTopics.length > 0 && topicMode === 'auto' && (
+                                <div className="flex flex-wrap gap-1.5 mt-2">
+                                  {item.suggestedTopics.map((topic, i) => (
+                                    <span
+                                      key={i}
+                                      className="px-2 py-1 rounded-lg bg-secondary/80 text-[11px] font-medium"
+                                    >
+                                      {topic}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex flex-col items-end">
+                            <span className="text-2xl font-bold text-primary">{item.count}</span>
+                            <span className="text-[10px] text-muted-foreground">posts</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Funnel Breakdown */}
+                <div className="p-4 rounded-xl bg-gradient-to-r from-blue-500/10 via-purple-500/10 to-green-500/10 border border-border/40">
+                  <p className="text-xs font-semibold mb-3 text-muted-foreground uppercase tracking-wide">Marketing Funnel Distribution</p>
+                  <div className="flex items-center gap-1">
+                    {Object.entries(contentPlan.contentMix.funnelBreakdown).map(([stage, count], index, arr) => {
+                      const widthPercent = (count / contentPlan.contentMix.totalPosts) * 100;
+                      const colors = {
+                        awareness: 'bg-blue-500',
+                        consideration: 'bg-purple-500',
+                        conversion: 'bg-green-500',
+                        retention: 'bg-amber-500',
+                      };
+                      const bgColor = colors[stage as keyof typeof colors] || 'bg-gray-500';
+                      
+                      return (
+                        <div key={stage} className="flex-1 text-center">
+                          <div className={`h-2 ${bgColor} ${index === 0 ? 'rounded-l-full' : ''} ${index === arr.length - 1 ? 'rounded-r-full' : ''}`} />
+                          <p className="text-lg font-bold mt-2">{count}</p>
+                          <p className="text-[10px] text-muted-foreground capitalize">{stage}</p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Adjustments */}
+                {contentPlan.contentMix.adjustments.length > 0 && (
+                  <div className="p-4 rounded-xl bg-blue-500/5 border border-blue-500/20">
+                    <div className="flex items-start gap-2">
+                      <Sparkles size={16} className="text-blue-500 mt-0.5 shrink-0" />
+                      <div>
+                        <p className="text-sm font-semibold text-blue-600 dark:text-blue-400">AI Adjustments</p>
+                        <ul className="mt-2 space-y-1.5">
+                          {contentPlan.contentMix.adjustments.map((adj, i) => (
+                            <li key={i} className="text-xs text-muted-foreground flex items-start gap-2">
+                              <span className="text-blue-500 mt-0.5">•</span>
+                              {adj}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </ExpandableSection>
+          )}
+
+          {/* Schedule Preview */}
+          {contentPlan && contentPlan.schedule.slots.length > 0 && (
+            <ExpandableSection
+              title="Schedule Preview"
+              subtitle={`${contentPlan.schedule.slots.length} posts planned`}
+              icon={<Calendar size={20} className="text-green-500" />}
+              iconBg="bg-green-500/10"
+              expanded={expandedSections.schedule}
+              onToggle={() => toggleSection('schedule')}
+              badge={
+                <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-500/10 text-green-500">
+                  {contentPlan.schedule.slots.length} slots
+                </span>
+              }
+            >
+              <div className="space-y-4">
+                <div className="space-y-2 max-h-80 overflow-y-auto pr-2 -mr-2">
+                  {contentPlan.schedule.slots.map((slot, i) => {
+                    const Icon = platformIcons[slot.platform] || Globe;
+                    const colors = platformColors[slot.platform] || platformColors.LINKEDIN;
+                    const typeColor = contentTypeColors[slot.contentType] || 'bg-gray-500/10 text-gray-500';
+
+                    return (
+                      <motion.div
+                        key={i}
+                        initial={{ opacity: 0, x: -10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: i * 0.05 }}
+                        className="flex items-center gap-3 p-3 rounded-xl bg-background border border-border/40 hover:border-border hover:shadow-sm transition-all"
+                      >
+                        <div className="text-center min-w-[70px] p-2 rounded-lg bg-secondary/50">
+                          <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{slot.dayOfWeek.slice(0, 3)}</p>
+                          <p className="text-sm font-bold">{slot.time}</p>
+                        </div>
+                        <div className={`p-2 rounded-lg ${colors.bg}`}>
+                          <Icon size={16} className={colors.text} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className={`px-2 py-0.5 rounded-lg text-[10px] font-semibold ${typeColor}`}>
+                              {slot.contentType}
+                            </span>
+                            <ConfidenceBadge confidence={slot.confidence} />
+                          </div>
+                          {slot.topic && (
+                            <p className="text-xs text-muted-foreground truncate mt-1">{slot.topic}</p>
+                          )}
+                        </div>
+                      </motion.div>
+                    );
+                  })}
+                </div>
+
+                {contentPlan.schedule.optimizationNotes.length > 0 && (
+                  <div className="p-3 rounded-xl bg-secondary/30 border border-border/40">
+                    <p className="text-xs font-semibold mb-2 text-muted-foreground">Optimization Notes</p>
+                    <div className="space-y-1">
+                      {contentPlan.schedule.optimizationNotes.map((note, i) => (
+                        <p key={i} className="text-xs text-muted-foreground flex items-start gap-2">
+                          <Info size={10} className="mt-0.5 shrink-0" />
+                          {note}
+                        </p>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </ExpandableSection>
           )}
 
           {/* Generate Button */}
-          <div className="rounded-xl border-2 border-primary/30 bg-gradient-to-r from-primary/5 to-purple-500/5 p-6">
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="rounded-xl border-2 border-primary/30 bg-gradient-to-r from-primary/5 via-purple-500/5 to-primary/5 p-6 shadow-lg shadow-primary/5"
+          >
             <div className="flex flex-col md:flex-row items-center justify-between gap-4">
               <div>
-                <h3 className="text-lg font-semibold">Ready to Generate</h3>
-                <p className="text-sm text-muted-foreground">
-                  {customPostCount || contentPlan?.volume.recommended || 0} posts • {selectedPlatforms.length} platform{selectedPlatforms.length !== 1 ? 's' : ''} • {periodLabels[period].label}
+                <h3 className="text-lg font-bold flex items-center gap-2">
+                  <Zap className="text-primary" size={20} />
+                  Ready to Generate
+                </h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  <span className="font-semibold text-foreground">{customPostCount || contentPlan?.volume.recommended || 0}</span> posts • 
+                  <span className="font-semibold text-foreground"> {selectedPlatforms.length}</span> platform{selectedPlatforms.length !== 1 ? 's' : ''} • 
+                  <span className="font-semibold text-foreground"> {periodConfig[period].label}</span>
                 </p>
                 {contentPlan?.summary.estimatedEngagement === 'above_average' && (
-                  <p className="text-xs text-green-500 mt-1 flex items-center gap-1">
-                    <TrendingUp size={12} />
+                  <p className="text-xs text-green-500 mt-2 flex items-center gap-1.5 font-medium">
+                    <TrendingUp size={14} />
                     Estimated engagement: Above your average
                   </p>
                 )}
@@ -1343,22 +1609,48 @@ export default function EnhancedGeneratePage() {
               <button
                 onClick={handleBulkGenerate}
                 disabled={isGenerating || selectedPlatforms.length === 0 || isPlanLoading}
-                className="flex items-center gap-2 px-8 py-4 rounded-xl bg-gradient-to-r from-primary to-purple-500 text-white font-semibold text-lg hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-primary/25"
+                className="relative flex items-center gap-3 px-8 py-4 rounded-xl bg-gradient-to-r from-primary to-purple-500 text-white font-bold text-lg hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-xl shadow-primary/30 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:ring-offset-2 group"
               >
                 {isGenerating ? (
                   <>
                     <Loader2 size={24} className="animate-spin" />
-                    Generating...
+                    <div className="text-left">
+                      <span className="block">Generating...</span>
+                      {generationStep && (
+                        <span className="block text-xs font-normal opacity-80">{generationStep}</span>
+                      )}
+                    </div>
                   </>
                 ) : (
                   <>
-                    <Zap size={24} />
+                    <Zap size={24} className="group-hover:scale-110 transition-transform" />
                     Generate {customPostCount || contentPlan?.volume.recommended || 0} Posts
                   </>
                 )}
               </button>
             </div>
-          </div>
+          </motion.div>
+
+          {/* Auto-approve info */}
+          {intelligence?.autoApprove && (
+            <div className="flex items-center gap-2 p-4 rounded-xl bg-green-500/10 border border-green-500/20">
+              <CheckCircle2 size={18} className="text-green-500 shrink-0" />
+              <div>
+                <p className="text-sm font-medium text-green-600 dark:text-green-400">Auto-approve is enabled</p>
+                <p className="text-xs text-muted-foreground">Generated posts will be automatically scheduled for publishing.</p>
+              </div>
+            </div>
+          )}
+
+          {!intelligence?.autoApprove && (
+            <div className="flex items-center gap-2 p-4 rounded-xl bg-blue-500/10 border border-blue-500/20">
+              <Info size={18} className="text-blue-500 shrink-0" />
+              <div>
+                <p className="text-sm font-medium text-blue-600 dark:text-blue-400">Manual approval required</p>
+                <p className="text-xs text-muted-foreground">Generated posts will go to your review queue before publishing.</p>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
