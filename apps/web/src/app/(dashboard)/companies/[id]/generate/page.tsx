@@ -14,7 +14,6 @@ import {
   TrendingDown,
   Minus,
   Calendar,
-  Clock,
   Target,
   BarChart3,
   CheckCircle2,
@@ -36,14 +35,12 @@ import {
   Lightbulb,
   Heart,
   Camera,
-  HelpCircle,
   RefreshCw,
   Settings2,
-  Play,
   Check,
   X,
+  PlusCircle,
 } from 'lucide-react';
-import { platform } from 'process';
 
 // ============================================
 // TYPES
@@ -81,6 +78,7 @@ interface Intelligence {
   avgEngagementRate: number | null;
   topPerformingTypes: Record<string, number> | null;
   learnedBestDays: string[];
+  learnedBestTimes: Record<string, string[]> | null;
   contentPillars: ContentPillar[];
   uniqueSellingPoints: string[];
   onboardingCompleted: boolean;
@@ -205,6 +203,25 @@ const periodLabels: Record<GenerationPeriod, { label: string; description: strin
 };
 
 // ============================================
+// HELPER FUNCTIONS
+// ============================================
+
+function capitalizeFirst(str: string): string {
+  return str.charAt(0).toUpperCase() + str.slice(1);
+}
+
+function formatDays(days: string[]): string {
+  if (!days || days.length === 0) return 'Not set';
+  return days.slice(0, 3).map(d => capitalizeFirst(d.slice(0, 3))).join(', ');
+}
+
+function getTopContentType(types: Record<string, number> | null): string {
+  if (!types || Object.keys(types).length === 0) return 'Educational';
+  const sorted = Object.entries(types).sort((a, b) => b[1] - a[1]);
+  return capitalizeFirst(sorted[0]?.[0] || 'Educational');
+}
+
+// ============================================
 // MAIN COMPONENT
 // ============================================
 
@@ -272,21 +289,31 @@ export default function EnhancedGeneratePage() {
 
       if (platformsRes.ok) {
         const platformsData = await platformsRes.json();
+        console.log('Platforms loaded:', platformsData);
         setPlatforms(platformsData);
+        
         // Auto-select connected platforms
         const connected = platformsData.filter((p: Platform) => p.isConnected).map((p: Platform) => p.type);
         setSelectedPlatforms(connected);
+        
+        // Set single platform to first connected
         if (connected.length > 0) {
           setSinglePlatform(connected[0]);
         }
+      } else {
+        console.error('Failed to fetch platforms:', await platformsRes.text());
       }
 
       if (intelligenceRes.ok) {
         const intelligenceData = await intelligenceRes.json();
+        console.log('Intelligence loaded:', intelligenceData);
         setIntelligence(intelligenceData);
         setTone(intelligenceData.defaultTone || 'professional');
+      } else {
+        console.error('Failed to fetch intelligence:', await intelligenceRes.text());
       }
     } catch (err) {
+      console.error('Error loading data:', err);
       setError(err instanceof Error ? err.message : 'Failed to load data');
     } finally {
       setIsLoading(false);
@@ -415,9 +442,9 @@ export default function EnhancedGeneratePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           companyId,
-          plaformId: platforms.find(p => p.type === singlePlatform)?.id,
-          platform: singlePlatform.toLowerCase() as 'linkedin' | 'facebook' | 'tiktok' | 'instagram' | 'wordpress',
-          topics: singleTopic || undefined,
+          platformId: platforms.find(p => p.type === singlePlatform)?.id,
+          platform: singlePlatform.toLowerCase() as 'linkedin' | 'facebook' | 'twitter' | 'instagram' | 'wordpress',
+          topic: singleTopic || undefined,
           tone,
         }),
       });
@@ -439,6 +466,21 @@ export default function EnhancedGeneratePage() {
       setIsGenerating(false);
     }
   };
+
+  // ============================================
+  // COMPUTED VALUES
+  // ============================================
+
+  // Get best days - prefer learned, fallback to preferred
+  const bestDays = intelligence?.learnedBestDays?.length 
+    ? intelligence.learnedBestDays 
+    : intelligence?.preferredDays || [];
+
+  // Get top content type - prefer learned, fallback to default
+  const topContentType = getTopContentType(intelligence?.topPerformingTypes);
+
+  // Connected platforms count
+  const connectedPlatforms = platforms.filter(p => p.isConnected);
 
   // ============================================
   // RENDER HELPERS
@@ -604,29 +646,48 @@ export default function EnhancedGeneratePage() {
             {/* Platform Selection */}
             <div>
               <label className="text-sm font-medium mb-2 block">Platform</label>
-              <div className="flex flex-wrap gap-2">
-                {platforms.filter(p => p.isConnected).map(platform => {
-                  const Icon = platformIcons[platform.type] || Globe;
-                  const colors = platformColors[platform.type] || platformColors.LINKEDIN;
-                  const isSelected = singlePlatform === platform.type;
+              {connectedPlatforms.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {connectedPlatforms.map(plat => {
+                    const Icon = platformIcons[plat.type] || Globe;
+                    const colors = platformColors[plat.type] || platformColors.LINKEDIN;
+                    const isSelected = singlePlatform === plat.type;
 
-                  return (
-                    <button
-                      key={platform.id}
-                      onClick={() => setSinglePlatform(platform.type)}
-                      className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-all ${
-                        isSelected
-                          ? `${colors.bg} ${colors.border} ${colors.text} border-2`
-                          : 'border-border/60 hover:border-border'
-                      }`}
-                    >
-                      <Icon size={18} />
-                      <span className="text-sm font-medium">{platform.name}</span>
-                      {isSelected && <Check size={14} />}
-                    </button>
-                  );
-                })}
-              </div>
+                    return (
+                      <button
+                        key={plat.id}
+                        onClick={() => setSinglePlatform(plat.type)}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-all ${
+                          isSelected
+                            ? `${colors.bg} ${colors.border} ${colors.text} border-2`
+                            : 'border-border/60 hover:border-border'
+                        }`}
+                      >
+                        <Icon size={18} />
+                        <span className="text-sm font-medium">{plat.name}</span>
+                        {isSelected && <Check size={14} />}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="p-4 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                  <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+                    <AlertCircle size={16} />
+                    <span className="text-sm font-medium">No platforms connected</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Connect a platform to start generating content.
+                  </p>
+                  <Link
+                    href={`/companies/${companyId}/platforms`}
+                    className="inline-flex items-center gap-1 mt-2 text-xs text-primary hover:underline"
+                  >
+                    <PlusCircle size={12} />
+                    Connect Platform
+                  </Link>
+                </div>
+              )}
             </div>
 
             {/* Topic */}
@@ -655,7 +716,7 @@ export default function EnhancedGeneratePage() {
                         : 'border-border/60 hover:border-border'
                     }`}
                   >
-                    {t.charAt(0).toUpperCase() + t.slice(1)}
+                    {capitalizeFirst(t)}
                   </button>
                 ))}
               </div>
@@ -753,7 +814,9 @@ export default function EnhancedGeneratePage() {
                           <span className="text-xs text-muted-foreground">Avg Engagement</span>
                         </div>
                         <p className="text-lg font-bold">
-                          {intelligence?.avgEngagementRate?.toFixed(1) || '—'}%
+                          {intelligence?.avgEngagementRate 
+                            ? `${intelligence.avgEngagementRate.toFixed(1)}%`
+                            : '0%'}
                         </p>
                       </div>
                       <div className="p-3 rounded-lg bg-background/50 border border-border/40">
@@ -762,7 +825,7 @@ export default function EnhancedGeneratePage() {
                           <span className="text-xs text-muted-foreground">Trend</span>
                         </div>
                         <p className="text-lg font-bold capitalize">
-                          {intelligence?.engagementTrend || 'N/A'}
+                          {intelligence?.engagementTrend || 'Stable'}
                         </p>
                       </div>
                       <div className="p-3 rounded-lg bg-background/50 border border-border/40">
@@ -771,7 +834,7 @@ export default function EnhancedGeneratePage() {
                           <span className="text-xs text-muted-foreground">Best Days</span>
                         </div>
                         <p className="text-sm font-medium truncate">
-                          {intelligence?.learnedBestDays?.slice(0, 2).join(', ') || 'Learning...'}
+                          {formatDays(bestDays)}
                         </p>
                       </div>
                       <div className="p-3 rounded-lg bg-background/50 border border-border/40">
@@ -780,10 +843,7 @@ export default function EnhancedGeneratePage() {
                           <span className="text-xs text-muted-foreground">Top Type</span>
                         </div>
                         <p className="text-sm font-medium truncate">
-                          {intelligence?.topPerformingTypes
-                            ? Object.entries(intelligence.topPerformingTypes)
-                                .sort((a, b) => b[1] - a[1])[0]?.[0] || 'N/A'
-                            : 'Learning...'}
+                          {topContentType}
                         </p>
                       </div>
                     </div>
@@ -816,43 +876,62 @@ export default function EnhancedGeneratePage() {
           {/* Platform Selection */}
           <div className="rounded-xl border border-border/60 bg-card p-6">
             <h2 className="text-lg font-semibold mb-4">Platforms</h2>
-            <div className="flex flex-wrap gap-3">
-              {platforms.map(platform => {
-                const Icon = platformIcons[platform.type] || Globe;
-                const colors = platformColors[platform.type] || platformColors.LINKEDIN;
-                const isSelected = selectedPlatforms.includes(platform.type);
-                const isConnected = platform.isConnected;
+            {platforms.length > 0 ? (
+              <div className="flex flex-wrap gap-3">
+                {platforms.map(plat => {
+                  const Icon = platformIcons[plat.type] || Globe;
+                  const colors = platformColors[plat.type] || platformColors.LINKEDIN;
+                  const isSelected = selectedPlatforms.includes(plat.type);
+                  const isConnected = plat.isConnected;
 
-                return (
-                  <button
-                    key={platform.id}
-                    onClick={() => isConnected && togglePlatform(platform.type)}
-                    disabled={!isConnected}
-                    className={`relative flex items-center gap-3 px-4 py-3 rounded-xl border-2 transition-all ${
-                      !isConnected
-                        ? 'opacity-50 cursor-not-allowed border-border/40'
-                        : isSelected
-                        ? `${colors.bg} ${colors.border} ${colors.text}`
-                        : 'border-border/60 hover:border-border'
-                    }`}
-                  >
-                    <Icon size={24} className={isConnected ? colors.text : 'text-muted-foreground'} />
-                    <div className="text-left">
-                      <p className="text-sm font-medium">{platform.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {isConnected ? 'Connected' : 'Not connected'}
-                      </p>
-                    </div>
-                    {isSelected && (
-                      <div className={`absolute -top-1 -right-1 p-0.5 rounded-full ${colors.bg} border-2 ${colors.border}`}>
-                        <Check size={12} className={colors.text} />
+                  return (
+                    <button
+                      key={plat.id}
+                      onClick={() => isConnected && togglePlatform(plat.type)}
+                      disabled={!isConnected}
+                      className={`relative flex items-center gap-3 px-4 py-3 rounded-xl border-2 transition-all ${
+                        !isConnected
+                          ? 'opacity-50 cursor-not-allowed border-border/40'
+                          : isSelected
+                          ? `${colors.bg} ${colors.border} ${colors.text}`
+                          : 'border-border/60 hover:border-border'
+                      }`}
+                    >
+                      <Icon size={24} className={isConnected ? colors.text : 'text-muted-foreground'} />
+                      <div className="text-left">
+                        <p className="text-sm font-medium">{plat.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {isConnected ? 'Connected' : 'Not connected'}
+                        </p>
                       </div>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-            {selectedPlatforms.length === 0 && (
+                      {isSelected && (
+                        <div className={`absolute -top-1 -right-1 p-0.5 rounded-full ${colors.bg} border-2 ${colors.border}`}>
+                          <Check size={12} className={colors.text} />
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="p-4 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+                  <AlertCircle size={16} />
+                  <span className="text-sm font-medium">No platforms found</span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Connect a social media platform to start generating content.
+                </p>
+                <Link
+                  href={`/companies/${companyId}/platforms`}
+                  className="inline-flex items-center gap-1 mt-2 text-xs text-primary hover:underline"
+                >
+                  <PlusCircle size={12} />
+                  Connect Platform
+                </Link>
+              </div>
+            )}
+            {platforms.length > 0 && selectedPlatforms.length === 0 && (
               <p className="text-sm text-amber-500 mt-3 flex items-center gap-2">
                 <AlertCircle size={14} />
                 Select at least one platform to continue
@@ -987,12 +1066,12 @@ export default function EnhancedGeneratePage() {
                         <div>
                           <p className="text-sm font-medium mb-2">Platform Distribution</p>
                           <div className="flex flex-wrap gap-2">
-                            {Object.entries(contentPlan.volume.breakdown.platformDistribution).map(([platform, count]) => {
-                              const Icon = platformIcons[platform] || Globe;
-                              const colors = platformColors[platform] || platformColors.LINKEDIN;
+                            {Object.entries(contentPlan.volume.breakdown.platformDistribution).map(([plat, count]) => {
+                              const Icon = platformIcons[plat] || Globe;
+                              const colors = platformColors[plat] || platformColors.LINKEDIN;
                               return (
                                 <div
-                                  key={platform}
+                                  key={plat}
                                   className={`flex items-center gap-2 px-3 py-1.5 rounded-lg ${colors.bg}`}
                                 >
                                   <Icon size={14} className={colors.text} />
@@ -1078,7 +1157,7 @@ export default function EnhancedGeneratePage() {
                             <Settings2 size={18} className={topicMode === 'manual' ? 'text-primary' : 'text-muted-foreground'} />
                             <div className="text-left">
                               <p className="text-sm font-medium">Manual</p>
-                              <p className="text-xs text-muted-foreground">I'll provide topics</p>
+                              <p className="text-xs text-muted-foreground">I&apos;ll provide topics</p>
                             </div>
                           </button>
                         </div>
