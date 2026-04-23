@@ -43,6 +43,7 @@ import {
   Check,
   X,
 } from 'lucide-react';
+import { platform } from 'process';
 
 // ============================================
 // TYPES
@@ -414,8 +415,9 @@ export default function EnhancedGeneratePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           companyId,
-          platformId: platforms.find(p => p.type === singlePlatform)?.id,
-          topic: singleTopic || undefined,
+          plaformId: platforms.find(p => p.type === singlePlatform)?.id,
+          platform: singlePlatform.toLowerCase() as 'linkedin' | 'facebook' | 'tiktok' | 'instagram' | 'wordpress',
+          topics: singleTopic || undefined,
           tone,
         }),
       });

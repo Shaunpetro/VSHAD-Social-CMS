@@ -333,9 +333,8 @@ export async function regenerateContent(
         minImpressions: 10,
       });
 
-      if (insights.hasData) {
-        insightsPrompt = formatInsightsForPrompt(insights);
-      }
+    insightsPrompt = formatInsightsForPrompt(insights);
+    
     } catch (error) {
       console.warn("Failed to fetch performance insights:", error);
     }
