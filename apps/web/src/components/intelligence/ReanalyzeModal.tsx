@@ -159,20 +159,38 @@ export default function ReanalyzeModal({
     }
   };
 
+  // Helper function to safely get display name from unknown type
+  const getDisplayName = (value: unknown): string => {
+    if (value === null || value === undefined) {
+      return '';
+    }
+    if (typeof value === 'string') {
+      return value;
+    }
+    if (typeof value === 'object') {
+      const obj = value as Record<string, unknown>;
+      if (typeof obj.name === 'string') return obj.name;
+      if (typeof obj.point === 'string') return obj.point;
+      if (typeof obj.code === 'string') return obj.code;
+      return JSON.stringify(value);
+    }
+    return String(value);
+  };
+
   const renderChangeItem = (change: ChangeItem, index: number) => {
-    const item = change.item as Record<string, unknown>;
-    const displayName = item.name || item.point || item.code || JSON.stringify(item);
-    
+    const displayName = getDisplayName(change.item);
+    const previousName = change.previous ? getDisplayName(change.previous) : '';
+
     return (
       <div
         key={index}
         className={`flex items-center gap-2 px-3 py-2 rounded-lg border ${getChangeColor(change.type)}`}
       >
         {getChangeIcon(change.type)}
-        <span className="text-sm font-medium">{String(displayName)}</span>
-        {change.type === 'updated' && change.previous && (
+        <span className="text-sm font-medium">{displayName}</span>
+        {change.type === 'updated' && previousName && (
           <span className="text-xs opacity-60">
-            (was: {String((change.previous as Record<string, unknown>).name || change.previous)})
+            (was: {previousName})
           </span>
         )}
       </div>
@@ -221,7 +239,7 @@ export default function ReanalyzeModal({
               {/* Data Sources */}
               <div className="space-y-4">
                 <h3 className="font-medium text-[var(--text-primary)]">Data Sources</h3>
-                
+
                 {/* Website */}
                 <div>
                   <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">
@@ -340,8 +358,8 @@ export default function ReanalyzeModal({
             <div className="space-y-6">
               {/* Summary */}
               <div className={`flex items-start gap-4 p-4 rounded-xl ${
-                result.hasChanges 
-                  ? 'bg-amber-500/10 border border-amber-500/20' 
+                result.hasChanges
+                  ? 'bg-amber-500/10 border border-amber-500/20'
                   : 'bg-green-500/10 border border-green-500/20'
               }`}>
                 {result.hasChanges ? (
@@ -351,8 +369,8 @@ export default function ReanalyzeModal({
                 )}
                 <div>
                   <p className={`font-medium ${
-                    result.hasChanges 
-                      ? 'text-amber-700 dark:text-amber-300' 
+                    result.hasChanges
+                      ? 'text-amber-700 dark:text-amber-300'
                       : 'text-green-700 dark:text-green-300'
                   }`}>
                     {result.message}
