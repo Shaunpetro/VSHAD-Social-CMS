@@ -77,7 +77,7 @@ export interface GenerateContentParams {
   includeHashtags?: boolean;
   includeEmojis?: boolean;
   useAnalytics?: boolean;
-  contentTypeContext?: string; // NEW: Content strategy context from auto-generate
+  contentTypeContext?: string;
 }
 
 export interface GeneratedContent {
@@ -104,7 +104,7 @@ export async function generateSocialContent(
     includeHashtags = true,
     includeEmojis = false,
     useAnalytics = true,
-    contentTypeContext, // NEW
+    contentTypeContext,
   } = params;
 
   const config = platformConfigs[platform];
@@ -124,9 +124,8 @@ export async function generateSocialContent(
         minImpressions: 10,
       });
 
-      if (insights.hasData) {
-        insightsPrompt = formatInsightsForPrompt(insights);
-      }
+      // FIXED: Always format insights - the function handles all data sources including fallbacks
+      insightsPrompt = formatInsightsForPrompt(insights);
     } catch (error) {
       console.warn("Failed to fetch performance insights:", error);
       // Continue without insights
@@ -162,7 +161,7 @@ export async function generateSocialContent(
         },
       ],
       model: "llama-3.3-70b-versatile",
-      temperature: 0.75, // Slightly higher for more creativity
+      temperature: 0.75,
       max_tokens: 1024,
     });
 
@@ -333,8 +332,8 @@ export async function regenerateContent(
         minImpressions: 10,
       });
 
-    insightsPrompt = formatInsightsForPrompt(insights);
-    
+      // Always format insights - the function handles all data sources including fallbacks
+      insightsPrompt = formatInsightsForPrompt(insights);
     } catch (error) {
       console.warn("Failed to fetch performance insights:", error);
     }

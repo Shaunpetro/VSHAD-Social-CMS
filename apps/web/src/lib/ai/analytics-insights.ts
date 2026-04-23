@@ -2,8 +2,13 @@
 /**
  * Analytics Insights Service
  * Extracts performance patterns from past posts to inform AI content generation.
- * 
+ *
  * UPDATED: Added comprehensive fallback system for cold start scenarios
+ * Fallback hierarchy:
+ * 1. Performance data (if 5+ posts with impressions)
+ * 2. Company intelligence + Industry benchmarks
+ * 3. Company intelligence only
+ * 4. Proven defaults (research-backed)
  */
 
 import { prisma } from "@/lib/db";
@@ -69,16 +74,9 @@ const PROVEN_DEFAULTS = {
     instagram: ['11:00', '14:00', '19:00'],
     default: ['09:00', '12:00', '17:00'],
   } as Record<string, string[]>,
-  contentMix: {
-    educational: 40,
-    engagement: 30,
-    socialProof: 20,
-    promotional: 10,
-  },
   optimalContentLength: { min: 100, max: 300, avg: 200 },
   bestHashtagCount: { min: 3, max: 5, avg: 4 },
   avgEngagementRate: 2.5,
-  tones: ['professional', 'friendly'],
 };
 
 // ============================================
@@ -183,12 +181,12 @@ export async function getPerformanceInsights(
     ? posts.filter((p) => p.platform?.type === platformType)
     : posts;
 
-  // If we have performance data, use it
+  // PRIORITY 1: If we have enough performance data, use it
   if (filteredPosts.length >= 5) {
     return buildPerformanceBasedInsights(filteredPosts, companyId);
   }
 
-  // FALLBACK: Try to get company intelligence
+  // PRIORITY 2 & 3: Try to get company intelligence
   const intelligence = await prisma.companyIntelligence.findUnique({
     where: { companyId },
     include: {
@@ -214,10 +212,10 @@ export async function getPerformanceInsights(
       });
     }
 
-    return buildIntelligenceBasedInsights(intelligence, industryBenchmark, filteredPosts);
+    return buildIntelligenceBasedInsights(intelligence, industryBenchmark, filteredPosts.length);
   }
 
-  // FINAL FALLBACK: Use proven defaults
+  // PRIORITY 4: Use proven defaults
   return buildDefaultInsights();
 }
 
@@ -248,17 +246,14 @@ async function buildPerformanceBasedInsights(
   posts: PostWithPlatform[],
   companyId: string
 ): Promise<PerformanceInsights> {
-  // Calculate engagement rates
   const postsWithEngagement = posts.map((post) => ({
     ...post,
     engagementRate: calculateEngagementRate(post),
   }));
 
-  // Average engagement rate
   const totalEngagement = postsWithEngagement.reduce((sum, p) => sum + p.engagementRate, 0);
   const avgEngagementRate = totalEngagement / postsWithEngagement.length;
 
-  // Top performing topics
   const topicGroups = groupAndAverage(
     postsWithEngagement,
     (p) => p.topic,
@@ -270,7 +265,6 @@ async function buildPerformanceBasedInsights(
     postCount: g.count,
   }));
 
-  // Best performing tones
   const toneGroups = groupAndAverage(
     postsWithEngagement,
     (p) => p.tone,
@@ -282,7 +276,6 @@ async function buildPerformanceBasedInsights(
     postCount: g.count,
   }));
 
-  // Content length analysis (top 25% by engagement)
   const sortedByEngagement = [...postsWithEngagement].sort(
     (a, b) => b.engagementRate - a.engagementRate
   );
@@ -290,6 +283,7 @@ async function buildPerformanceBasedInsights(
     0,
     Math.max(1, Math.ceil(sortedByEngagement.length * 0.25))
   );
+
   const lengths = topQuartile.map((p) => p.content.length);
   const optimalContentLength = {
     min: Math.min(...lengths),
@@ -297,7 +291,6 @@ async function buildPerformanceBasedInsights(
     avg: Math.round(lengths.reduce((a, b) => a + b, 0) / lengths.length),
   };
 
-  // Hashtag count analysis
   const hashtagCounts = topQuartile.map((p) => p.hashtags?.length || 0);
   const bestHashtagCount = {
     min: Math.min(...hashtagCounts),
@@ -305,15 +298,12 @@ async function buildPerformanceBasedInsights(
     avg: Math.round(hashtagCounts.reduce((a, b) => a + b, 0) / hashtagCounts.length),
   };
 
-  // Best posting times
   const timingMap: Record<string, { total: number; count: number }> = {};
   for (const post of topQuartile) {
     const postDate = post.publishedAt || post.scheduledFor;
     if (!postDate) continue;
-
     const { hour, dayOfWeek } = getTimingInfo(new Date(postDate));
     const key = `${dayOfWeek}-${hour}`;
-
     if (!timingMap[key]) {
       timingMap[key] = { total: 0, count: 0 };
     }
@@ -333,7 +323,6 @@ async function buildPerformanceBasedInsights(
     .sort((a, b) => b.avgEngagement - a.avgEngagement)
     .slice(0, 5);
 
-  // Top hashtags
   const hashtagFrequency: Record<string, number> = {};
   for (const post of topQuartile) {
     for (const tag of post.hashtags || []) {
@@ -346,7 +335,6 @@ async function buildPerformanceBasedInsights(
     .slice(0, 10)
     .map(([tag]) => tag);
 
-  // Recent top posts
   const recentTopPosts = sortedByEngagement.slice(0, 3).map((p) => ({
     id: p.id,
     content: p.content.substring(0, 500),
@@ -391,7 +379,7 @@ async function buildPerformanceBasedInsights(
 }
 
 // ============================================
-// BUILD INSIGHTS FROM COMPANY INTELLIGENCE (FALLBACK 1)
+// BUILD INSIGHTS FROM COMPANY INTELLIGENCE (FALLBACK)
 // ============================================
 
 interface IntelligenceWithPillars {
@@ -425,14 +413,13 @@ interface IndustryBenchmarkRecord {
 function buildIntelligenceBasedInsights(
   intelligence: IntelligenceWithPillars,
   industryBenchmark: IndustryBenchmarkRecord | null,
-  existingPosts: PostWithPlatform[]
+  existingPostCount: number
 ): PerformanceInsights {
   const dayNameToNumber: Record<string, number> = {
     sunday: 0, monday: 1, tuesday: 2, wednesday: 3,
     thursday: 4, friday: 5, saturday: 6,
   };
 
-  // Use learned data if available, otherwise preferences, otherwise defaults
   const bestDays = intelligence.learnedBestDays?.length > 0
     ? intelligence.learnedBestDays
     : intelligence.preferredDays?.length > 0
@@ -441,12 +428,10 @@ function buildIntelligenceBasedInsights(
 
   const bestTimes = (intelligence.learnedBestTimes || intelligence.preferredTimes || industryBenchmark?.bestTimes || PROVEN_DEFAULTS.bestTimes) as Record<string, string[]>;
 
-  // Build posting times from preferences
   const bestPostingTimes: Array<{ hour: number; dayOfWeek: number; avgEngagement: number }> = [];
   for (const day of bestDays) {
     const dayNum = dayNameToNumber[day.toLowerCase()];
     if (dayNum === undefined) continue;
-
     const times = bestTimes[day.toLowerCase()] || bestTimes.default || ['09:00', '12:00'];
     for (const time of times.slice(0, 2)) {
       const hour = parseInt(time.split(':')[0], 10);
@@ -458,7 +443,6 @@ function buildIntelligenceBasedInsights(
     }
   }
 
-  // Get topics from content pillars
   const topPerformingTopics = intelligence.contentPillars
     .flatMap((p) => p.topics.map((topic: string) => ({
       topic,
@@ -467,7 +451,6 @@ function buildIntelligenceBasedInsights(
     })))
     .slice(0, 5);
 
-  // Build tone recommendations
   const bestPerformingTones = [
     { tone: intelligence.defaultTone || 'professional', avgEngagement: PROVEN_DEFAULTS.avgEngagementRate, postCount: 0 },
   ];
@@ -475,7 +458,6 @@ function buildIntelligenceBasedInsights(
     bestPerformingTones.push({ tone: 'friendly', avgEngagement: PROVEN_DEFAULTS.avgEngagementRate * 0.9, postCount: 0 });
   }
 
-  // Industry guidance
   let industryGuidance: PerformanceInsights['industryGuidance'] = null;
   if (industryBenchmark) {
     const suggestedThemes: string[] = [];
@@ -487,7 +469,6 @@ function buildIntelligenceBasedInsights(
         }
       }
     }
-
     industryGuidance = {
       industry: industryBenchmark.industry,
       bestDays: industryBenchmark.bestDays,
@@ -500,7 +481,7 @@ function buildIntelligenceBasedInsights(
   return {
     hasData: true,
     dataSource: industryBenchmark ? 'industry' : 'intelligence',
-    totalPostsAnalyzed: existingPosts.length,
+    totalPostsAnalyzed: existingPostCount,
     avgEngagementRate: industryBenchmark?.avgEngagementRate || PROVEN_DEFAULTS.avgEngagementRate,
     topPerformingTopics,
     bestPerformingTones,
@@ -584,7 +565,6 @@ export function formatInsightsForPrompt(insights: PerformanceInsights): string {
 
   let prompt = `\n**CONTENT INTELLIGENCE** (Source: ${insights.dataSource}):\n`;
 
-  // Data source context
   if (insights.dataSource === 'performance') {
     prompt += `Based on ${insights.totalPostsAnalyzed} analyzed posts with real performance data.\n\n`;
   } else if (insights.dataSource === 'industry') {
@@ -595,10 +575,8 @@ export function formatInsightsForPrompt(insights: PerformanceInsights): string {
     prompt += `Using proven social media best practices (new account).\n\n`;
   }
 
-  // Average engagement
   prompt += `- Target engagement rate: ${insights.avgEngagementRate}%\n`;
 
-  // Top topics
   if (insights.topPerformingTopics.length > 0) {
     const topics = insights.topPerformingTopics
       .map((t) => `"${t.topic}" (${t.avgEngagement}% eng.)`)
@@ -606,7 +584,6 @@ export function formatInsightsForPrompt(insights: PerformanceInsights): string {
     prompt += `- ${insights.dataSource === 'performance' ? 'Top performing' : 'Recommended'} topics: ${topics}\n`;
   }
 
-  // Best tones
   if (insights.bestPerformingTones.length > 0) {
     const tones = insights.bestPerformingTones
       .map((t) => `${t.tone} (${t.avgEngagement}% eng.)`)
@@ -614,17 +591,14 @@ export function formatInsightsForPrompt(insights: PerformanceInsights): string {
     prompt += `- ${insights.dataSource === 'performance' ? 'Best performing' : 'Recommended'} tones: ${tones}\n`;
   }
 
-  // Content length
   if (insights.optimalContentLength.avg > 0) {
     prompt += `- Optimal content length: ${insights.optimalContentLength.min}-${insights.optimalContentLength.max} characters (avg: ${insights.optimalContentLength.avg})\n`;
   }
 
-  // Hashtag count
   if (insights.bestHashtagCount.avg > 0) {
     prompt += `- Optimal hashtag count: ${insights.bestHashtagCount.min}-${insights.bestHashtagCount.max} (avg: ${insights.bestHashtagCount.avg})\n`;
   }
 
-  // Best posting times
   if (insights.bestPostingTimes.length > 0) {
     const times = insights.bestPostingTimes
       .slice(0, 3)
@@ -633,12 +607,10 @@ export function formatInsightsForPrompt(insights: PerformanceInsights): string {
     prompt += `- Best posting times: ${times}\n`;
   }
 
-  // Top hashtags
   if (insights.topHashtags.length > 0) {
     prompt += `- ${insights.dataSource === 'performance' ? 'High-performing' : 'Recommended'} hashtags: #${insights.topHashtags.slice(0, 5).join(", #")}\n`;
   }
 
-  // Content pillars
   if (insights.contentPillars.length > 0) {
     prompt += `\n**CONTENT PILLARS:**\n`;
     for (const pillar of insights.contentPillars.slice(0, 3)) {
@@ -646,7 +618,6 @@ export function formatInsightsForPrompt(insights: PerformanceInsights): string {
     }
   }
 
-  // Brand guidance
   if (insights.brandGuidance) {
     prompt += `\n**BRAND GUIDANCE:**\n`;
     if (insights.brandGuidance.personality.length > 0) {
@@ -663,7 +634,6 @@ export function formatInsightsForPrompt(insights: PerformanceInsights): string {
     }
   }
 
-  // Industry guidance
   if (insights.industryGuidance) {
     prompt += `\n**INDUSTRY CONTEXT (${insights.industryGuidance.industry}):**\n`;
     if (insights.industryGuidance.avgEngagementRate) {
@@ -674,7 +644,6 @@ export function formatInsightsForPrompt(insights: PerformanceInsights): string {
     }
   }
 
-  // Example of top post (only if from performance data)
   if (insights.dataSource === 'performance' && insights.recentTopPosts.length > 0) {
     const topPost = insights.recentTopPosts[0];
     prompt += `\n**TOP PERFORMING POST EXAMPLE** (${topPost.engagementRate}% engagement, ${topPost.impressions} impressions):\n`;
