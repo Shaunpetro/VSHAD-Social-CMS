@@ -5,7 +5,7 @@ import { prisma } from '@/lib/db';
 
 /**
  * GET /api/companies/[id]/intelligence
- * 
+ *
  * Fetches the company's intelligence data including:
  * - Brand identity & goals
  * - Content pillars
@@ -45,15 +45,14 @@ export async function GET(
     }
 
     // Calculate real-time intelligence score if not recently updated
-    const shouldRecalculate = !intelligence.lastIntelligenceUpdate || 
-      (Date.now() - intelligence.lastIntelligenceUpdate.getTime()) > 24 * 60 * 60 * 1000; // 24 hours
+    const shouldRecalculate = !intelligence.lastIntelligenceUpdate ||
+      (Date.now() - intelligence.lastIntelligenceUpdate.getTime()) > 24 * 60 * 60 * 1000;
 
     let intelligenceScore = intelligence.intelligenceScore;
 
     if (shouldRecalculate) {
       intelligenceScore = await calculateIntelligenceScore(companyId, intelligence);
-      
-      // Update the score in database (non-blocking)
+
       prisma.companyIntelligence.update({
         where: { id: intelligence.id },
         data: {
@@ -63,12 +62,14 @@ export async function GET(
       }).catch(err => console.error('Failed to update intelligence score:', err));
     }
 
-    // Format response
     const response = {
-      // Basic info
       id: intelligence.id,
       companyId: intelligence.companyId,
       onboardingCompleted: intelligence.onboardingCompleted,
+
+      // Industries (NEW)
+      extractedIndustries: intelligence.extractedIndustries,
+      industriesConfirmed: intelligence.industriesConfirmed,
 
       // Brand Identity
       brandPersonality: intelligence.brandPersonality,
@@ -95,6 +96,7 @@ export async function GET(
         lastUsed: pillar.lastUsed,
         performanceTrend: pillar.performanceTrend,
         bestPerformingType: pillar.bestPerformingType,
+        isActive: pillar.isActive,
       })),
 
       // Keywords & Hashtags
@@ -175,17 +177,18 @@ export async function GET(
 }
 
 /**
- * PATCH /api/companies/[id]/intelligence
- * 
- * Updates specific intelligence fields
+ * PUT /api/companies/[id]/intelligence
+ *
+ * Full update of intelligence settings (used by Settings page)
+ * Handles contentPillars CRUD and extractedIndustries
  */
-export async function PATCH(
+export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id: companyId } = await params;
-    const updates = await request.json();
+    const body = await request.json();
 
     if (!companyId) {
       return NextResponse.json(
@@ -197,6 +200,7 @@ export async function PATCH(
     // Find existing intelligence
     const existing = await prisma.companyIntelligence.findUnique({
       where: { companyId },
+      include: { contentPillars: true },
     });
 
     if (!existing) {
@@ -206,8 +210,16 @@ export async function PATCH(
       );
     }
 
-    // Allowed fields for update
-    const allowedFields = [
+    // Extract contentPillars for separate handling
+    const { contentPillars, ...intelligenceData } = body;
+
+    // Build update data for intelligence
+    const updateData: Record<string, unknown> = {};
+
+    // Allowed direct fields
+    const directFields = [
+      'extractedIndustries',
+      'industriesConfirmed',
       'brandPersonality',
       'brandVoice',
       'uniqueSellingPoints',
@@ -232,7 +244,136 @@ export async function PATCH(
       'competitorGaps',
     ];
 
-    // Filter to only allowed fields
+    for (const field of directFields) {
+      if (field in intelligenceData) {
+        updateData[field] = intelligenceData[field];
+      }
+    }
+
+    // Update intelligence record
+    await prisma.companyIntelligence.update({
+      where: { id: existing.id },
+      data: updateData,
+    });
+
+    // Handle content pillars if provided
+    if (contentPillars && Array.isArray(contentPillars)) {
+      const existingPillarIds = existing.contentPillars.map(p => p.id);
+      const incomingPillarIds: string[] = [];
+
+      for (const pillar of contentPillars) {
+        if (pillar.id && !pillar.id.startsWith('new-')) {
+          // Update existing pillar
+          incomingPillarIds.push(pillar.id);
+          await prisma.contentPillar.update({
+            where: { id: pillar.id },
+            data: {
+              name: pillar.name,
+              topics: pillar.topics || [],
+              contentTypes: pillar.contentTypes || [],
+              frequencyWeight: pillar.frequencyWeight ?? 1.0,
+              isActive: pillar.isActive ?? true,
+            },
+          });
+        } else {
+          // Create new pillar
+          const newPillar = await prisma.contentPillar.create({
+            data: {
+              intelligenceId: existing.id,
+              name: pillar.name,
+              topics: pillar.topics || [],
+              contentTypes: pillar.contentTypes || [],
+              frequencyWeight: pillar.frequencyWeight ?? 1.0,
+              isActive: pillar.isActive ?? true,
+              keywords: [],
+              preferredDays: [],
+            },
+          });
+          incomingPillarIds.push(newPillar.id);
+        }
+      }
+
+      // Delete pillars that were removed
+      const pillarsToDelete = existingPillarIds.filter(id => !incomingPillarIds.includes(id));
+      if (pillarsToDelete.length > 0) {
+        await prisma.contentPillar.deleteMany({
+          where: { id: { in: pillarsToDelete } },
+        });
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: 'Intelligence settings updated successfully',
+    });
+
+  } catch (error) {
+    console.error('[Intelligence API] PUT error:', error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Failed to update intelligence data' },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * PATCH /api/companies/[id]/intelligence
+ *
+ * Updates specific intelligence fields (legacy support)
+ */
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id: companyId } = await params;
+    const updates = await request.json();
+
+    if (!companyId) {
+      return NextResponse.json(
+        { error: 'Company ID is required' },
+        { status: 400 }
+      );
+    }
+
+    const existing = await prisma.companyIntelligence.findUnique({
+      where: { companyId },
+    });
+
+    if (!existing) {
+      return NextResponse.json(
+        { error: 'Intelligence data not found' },
+        { status: 404 }
+      );
+    }
+
+    const allowedFields = [
+      'extractedIndustries',
+      'industriesConfirmed',
+      'brandPersonality',
+      'brandVoice',
+      'uniqueSellingPoints',
+      'targetAudience',
+      'primaryGoals',
+      'communityFocus',
+      'primaryKeywords',
+      'industryHashtags',
+      'brandedHashtags',
+      'defaultTone',
+      'humorEnabled',
+      'humorStyle',
+      'humorDays',
+      'humorTimes',
+      'dayToneSchedule',
+      'postsPerWeek',
+      'preferredDays',
+      'preferredTimes',
+      'timezone',
+      'autoApprove',
+      'avoidTopics',
+      'competitorGaps',
+    ];
+
     const filteredUpdates: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(updates)) {
       if (allowedFields.includes(key)) {
@@ -247,7 +388,6 @@ export async function PATCH(
       );
     }
 
-    // Update intelligence
     await prisma.companyIntelligence.update({
       where: { id: existing.id },
       data: filteredUpdates,
@@ -259,7 +399,7 @@ export async function PATCH(
     });
 
   } catch (error) {
-    console.error('[Intelligence API] Update error:', error);
+    console.error('[Intelligence API] PATCH error:', error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Failed to update intelligence data' },
       { status: 500 }
@@ -330,7 +470,6 @@ async function calculateIntelligenceScore(
   else if (publishedPosts >= 10) score += 10;
   else if (publishedPosts >= 5) score += 5;
 
-  // Check if we have learned data
   if (intelligence.learnedBestDays && intelligence.learnedBestDays.length > 0) score += 5;
   if (intelligence.topPerformingTypes && typeof intelligence.topPerformingTypes === 'object' && Object.keys(intelligence.topPerformingTypes as object).length > 0) score += 5;
   if (intelligence.avgEngagementRate && intelligence.avgEngagementRate > 0) score += 5;
