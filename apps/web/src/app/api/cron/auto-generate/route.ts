@@ -15,7 +15,7 @@ import {
 /**
  * Enhanced Auto-Generate Cron Job
  * Runs weekly (Sunday 8 PM SAST) to generate content for the upcoming week
- * 
+ *
  * Features:
  * - Psychology-based content mix (40-30-20-10 rule)
  * - Day-of-week optimization (right content for right day)
@@ -24,6 +24,7 @@ import {
  * - Goal-based content adjustment
  * - Self-learning from performance data
  * - Optional single-company targeting via ?companyId= parameter
+ * - FIXED: Proper timezone handling and preferredTimes slot mapping
  */
 
 interface GenerationResult {
@@ -40,18 +41,18 @@ interface GenerationResult {
 export async function GET(request: NextRequest) {
   const startTime = Date.now();
   const results: GenerationResult[] = [];
-  
+
   // Check for optional companyId parameter (for single-company generation from UI)
   const { searchParams } = new URL(request.url);
   const targetCompanyId = searchParams.get('companyId');
-  
+
   console.log('[AutoGenerate] ========================================');
   console.log('[AutoGenerate] Starting enhanced weekly content generation...');
   console.log('[AutoGenerate] Time:', new Date().toISOString());
   if (targetCompanyId) {
     console.log('[AutoGenerate] Targeting specific company:', targetCompanyId);
   }
-  
+
   try {
     // Find all companies with completed onboarding
     // If companyId provided, only process that specific company
@@ -75,9 +76,9 @@ export async function GET(request: NextRequest) {
         },
       },
     });
-    
+
     console.log(`[AutoGenerate] Found ${companies.length} active companies`);
-    
+
     if (targetCompanyId && companies.length === 0) {
       return NextResponse.json({
         success: false,
@@ -85,7 +86,7 @@ export async function GET(request: NextRequest) {
         timestamp: new Date().toISOString(),
       }, { status: 404 });
     }
-    
+
     for (const company of companies) {
       const result: GenerationResult = {
         companyId: company.id,
@@ -97,30 +98,32 @@ export async function GET(request: NextRequest) {
         funnelMix: {},
         errors: [],
       };
-      
+
       try {
         const intel = company.intelligence;
-        
+
         if (!intel) {
           result.errors.push('No intelligence data found');
           results.push(result);
           continue;
         }
-        
+
         if (company.platforms.length === 0) {
           result.errors.push('No connected platforms');
           results.push(result);
           continue;
         }
-        
+
         console.log(`[AutoGenerate] Processing ${company.name}: ${intel.postsPerWeek} posts/week`);
         console.log(`[AutoGenerate] Goals: ${intel.primaryGoals.join(', ') || 'none set'}`);
         console.log(`[AutoGenerate] Preferred days: ${intel.preferredDays.join(', ') || 'not set'}`);
-        
+        console.log(`[AutoGenerate] Preferred times: ${JSON.stringify(intel.preferredTimes)}`);
+        console.log(`[AutoGenerate] Timezone: ${intel.timezone}`);
+
         // Fetch industry benchmark for additional themes
         let industryThemes: Record<string, string[]> | null = null;
         let industryHashtags: string[] = [];
-        
+
         if (company.industry) {
           const benchmark = await prisma.industryBenchmark.findFirst({
             where: {
@@ -130,18 +133,18 @@ export async function GET(request: NextRequest) {
               },
             },
           });
-          
+
           if (benchmark) {
             industryThemes = benchmark.suggestedThemes as Record<string, string[]> | null;
             industryHashtags = benchmark.topHashtags || [];
             console.log(`[AutoGenerate] Found industry benchmark for: ${benchmark.industry}`);
           }
         }
-        
+
         // Collect all topics from content pillars
         const pillarTopics: string[] = [];
         const pillarMap: Record<string, { id: string; name: string; topics: string[]; contentTypes: string[] }> = {};
-        
+
         for (const pillar of intel.contentPillars) {
           pillarTopics.push(...pillar.topics);
           pillarMap[pillar.name] = {
@@ -151,34 +154,42 @@ export async function GET(request: NextRequest) {
             contentTypes: pillar.contentTypes,
           };
         }
-        
-        // Generate psychology-based content mix for the week
+
+        // FIXED: Generate psychology-based content mix for the week
+        // Now passing preferredTimes as string[] | Record<string, string[]> | null
+        // And including timezone for proper UTC conversion
         const contentMix = generateWeeklyContentMix(
           intel.postsPerWeek,
           intel.preferredDays,
-          intel.preferredTimes as Record<string, string[]> | null,
+          intel.preferredTimes as string[] | Record<string, string[]> | null,
           intel.primaryGoals,
           pillarTopics,
           industryThemes,
           company.industry,
-          intel.learnedBestPillars as Record<string, number> | null
+          intel.learnedBestPillars as Record<string, number> | null,
+          intel.timezone // FIXED: Pass timezone for proper scheduling
         );
-        
+
         console.log(`[AutoGenerate] Generated ${contentMix.slots.length} content slots`);
         console.log(`[AutoGenerate] Content mix:`, contentMix.mixBreakdown);
         console.log(`[AutoGenerate] Funnel mix:`, contentMix.funnelBreakdown);
-        
+
+        // Log each slot's scheduled time for debugging
+        for (const slot of contentMix.slots) {
+          console.log(`[AutoGenerate] Slot: ${slot.dayOfWeek} ${slot.time} → ${slot.date.toISOString()}`);
+        }
+
         // Store mix breakdown in result
         result.contentMix = contentMix.mixBreakdown as Record<string, number>;
         result.funnelMix = contentMix.funnelBreakdown as Record<string, number>;
-        
+
         // Generate content for each slot
         for (const slot of contentMix.slots) {
           try {
             // Select platform (rotate through connected platforms)
             const platformIndex = result.postsGenerated % company.platforms.length;
             const platform = company.platforms[platformIndex];
-            
+
             // Map platform type
             const platformTypeMap: Record<PlatformType, 'linkedin' | 'facebook' | 'twitter' | 'instagram' | 'wordpress'> = {
               LINKEDIN: 'linkedin',
@@ -188,7 +199,7 @@ export async function GET(request: NextRequest) {
               WORDPRESS: 'wordpress',
             };
             const platformType = platformTypeMap[platform.type];
-            
+
             // Determine tone based on day and company settings
             const tone = determineTone(
               slot.dayOfWeek,
@@ -198,7 +209,7 @@ export async function GET(request: NextRequest) {
               intel.humorEnabled,
               intel.humorDays
             );
-            
+
             // Get content type prompt enhancement
             const contentTypeContext = getContentTypePromptEnhancement(
               slot.contentType,
@@ -206,12 +217,12 @@ export async function GET(request: NextRequest) {
               slot.funnelStage,
               intel.primaryGoals
             );
-            
+
             // Find matching pillar for this content
             const matchingPillar = findMatchingPillar(slot.contentType, pillarMap);
-            
+
             console.log(`[AutoGenerate] Generating: ${slot.contentType} for ${slot.dayOfWeek} ${slot.time} on ${platform.type}`);
-            
+
             // Generate content with enhanced context
             const generated = await generateSocialContent({
               companyId: company.id,
@@ -228,9 +239,9 @@ export async function GET(request: NextRequest) {
               // Enhanced context passed to AI
               contentTypeContext,
             });
-            
+
             result.postsGenerated++;
-            
+
             // Merge industry hashtags with generated ones
             const finalHashtags = mergeHashtags(
               generated.hashtags,
@@ -238,7 +249,7 @@ export async function GET(request: NextRequest) {
               intel.industryHashtags,
               intel.brandedHashtags
             );
-            
+
             if (intel.autoApprove) {
               // Create GeneratedPost directly with SCHEDULED status
               await prisma.generatedPost.create({
@@ -251,13 +262,13 @@ export async function GET(request: NextRequest) {
                   tone,
                   pillar: matchingPillar?.name || null,
                   contentType: slot.contentType,
-                  scheduledFor: slot.date,
+                  scheduledFor: slot.date, // Already in UTC with correct time
                   status: PostStatus.SCHEDULED,
                   generatedBy: 'groq-llama-3.3-auto-v2',
                   hook: extractHook(generated.content),
                 },
               });
-              
+
               result.postsScheduled++;
               console.log(`[AutoGenerate] Scheduled: ${slot.contentType} for ${slot.date.toISOString()}`);
             } else {
@@ -284,14 +295,15 @@ export async function GET(request: NextRequest) {
                     topicSuggestion: slot.topicSuggestion,
                     analyticsUsed: generated.analyticsUsed,
                     generatedAt: new Date().toISOString(),
+                    timezone: intel.timezone,
                   },
                 },
               });
-              
+
               result.postsQueued++;
               console.log(`[AutoGenerate] Queued: ${slot.contentType} for review (${slot.date.toISOString()})`);
             }
-            
+
             // Update pillar post count if matched
             if (matchingPillar) {
               await prisma.contentPillar.update({
@@ -299,25 +311,25 @@ export async function GET(request: NextRequest) {
                 data: { totalPosts: { increment: 1 } },
               });
             }
-            
+
           } catch (slotError) {
             const errorMsg = slotError instanceof Error ? slotError.message : 'Unknown error';
             result.errors.push(`${slot.contentType} generation failed: ${errorMsg}`);
             console.error(`[AutoGenerate] Slot error:`, errorMsg);
           }
         }
-        
+
       } catch (companyError) {
         const errorMsg = companyError instanceof Error ? companyError.message : 'Unknown error';
         result.errors.push(`Company processing failed: ${errorMsg}`);
         console.error(`[AutoGenerate] Company error for ${company.name}:`, errorMsg);
       }
-      
+
       results.push(result);
     }
-    
+
     const duration = Date.now() - startTime;
-    
+
     // Calculate totals
     const totals = results.reduce(
       (acc, r) => ({
@@ -328,11 +340,11 @@ export async function GET(request: NextRequest) {
       }),
       { generated: 0, queued: 0, scheduled: 0, errors: 0 }
     );
-    
+
     // Aggregate content mix across all companies
     const aggregateContentMix: Record<string, number> = {};
     const aggregateFunnelMix: Record<string, number> = {};
-    
+
     for (const r of results) {
       for (const [type, count] of Object.entries(r.contentMix)) {
         aggregateContentMix[type] = (aggregateContentMix[type] || 0) + count;
@@ -341,14 +353,14 @@ export async function GET(request: NextRequest) {
         aggregateFunnelMix[stage] = (aggregateFunnelMix[stage] || 0) + count;
       }
     }
-    
+
     console.log('[AutoGenerate] ========================================');
     console.log(`[AutoGenerate] Completed in ${duration}ms`);
     console.log(`[AutoGenerate] Generated: ${totals.generated}, Queued: ${totals.queued}, Scheduled: ${totals.scheduled}`);
     console.log(`[AutoGenerate] Content Mix:`, aggregateContentMix);
     console.log(`[AutoGenerate] Funnel Mix:`, aggregateFunnelMix);
     console.log('[AutoGenerate] ========================================');
-    
+
     return NextResponse.json({
       success: true,
       timestamp: new Date().toISOString(),
@@ -360,11 +372,11 @@ export async function GET(request: NextRequest) {
       },
       companies: results,
     });
-    
+
   } catch (error) {
     const duration = Date.now() - startTime;
     console.error('[AutoGenerate] Fatal error:', error);
-    
+
     return NextResponse.json(
       {
         success: false,
@@ -401,7 +413,7 @@ function determineTone(
   if (dayToneSchedule && dayToneSchedule[dayOfWeek.toLowerCase()]) {
     return dayToneSchedule[dayOfWeek.toLowerCase()];
   }
-  
+
   // Content type specific tone adjustments
   const contentTypeTones: Partial<Record<ContentType, string>> = {
     behindTheScenes: 'casual',
@@ -410,11 +422,11 @@ function determineTone(
     motivational: 'authoritative',
     promotional: 'professional',
   };
-  
+
   if (contentTypeTones[contentType]) {
     return contentTypeTones[contentType]!;
   }
-  
+
   // Check if humor is appropriate
   if (humorEnabled && humorDays.includes(dayOfWeek.toLowerCase())) {
     const casualTypes: ContentType[] = ['behindTheScenes', 'engagement', 'community'];
@@ -422,7 +434,7 @@ function determineTone(
       return 'casual';
     }
   }
-  
+
   return defaultTone;
 }
 
@@ -439,7 +451,7 @@ function findMatchingPillar(
       return { id: pillar.id, name: pillar.name };
     }
   }
-  
+
   // Fallback: return first pillar if any exist
   const firstPillar = Object.values(pillarMap)[0];
   return firstPillar ? { id: firstPillar.id, name: firstPillar.name } : null;
@@ -455,29 +467,29 @@ function mergeHashtags(
   branded: string[]
 ): string[] {
   const allHashtags = new Set<string>();
-  
+
   // Add generated hashtags first (priority)
   for (const tag of generated.slice(0, 5)) {
     allHashtags.add(tag.toLowerCase().replace(/^#/, ''));
   }
-  
+
   // Add branded hashtags (always include)
   for (const tag of branded) {
     allHashtags.add(tag.toLowerCase().replace(/^#/, ''));
   }
-  
+
   // Add some company industry hashtags
   for (const tag of companyIndustry.slice(0, 2)) {
     allHashtags.add(tag.toLowerCase().replace(/^#/, ''));
   }
-  
+
   // Add some general industry hashtags
   for (const tag of industry.slice(0, 2)) {
     if (allHashtags.size < 10) {
       allHashtags.add(tag.toLowerCase().replace(/^#/, ''));
     }
   }
-  
+
   return Array.from(allHashtags).slice(0, 10);
 }
 
@@ -488,12 +500,12 @@ function extractHook(content: string): string {
   // Try to get first sentence or first line
   const firstLine = content.split('\n')[0];
   const firstSentence = content.split(/[.!?]/)[0];
-  
+
   // Return whichever is shorter (but not empty)
   if (firstLine.length > 0 && firstLine.length <= firstSentence.length) {
     return firstLine.substring(0, 150);
   }
-  
+
   return firstSentence.substring(0, 150);
 }
 
@@ -503,14 +515,14 @@ function extractHook(content: string): string {
 function predictEngagement(contentType: ContentType, funnelStage: string): string {
   const highEngagementTypes: ContentType[] = ['engagement', 'community', 'behindTheScenes'];
   const mediumEngagementTypes: ContentType[] = ['educational', 'tips', 'motivational'];
-  
+
   if (highEngagementTypes.includes(contentType)) {
     return 'high';
   }
-  
+
   if (mediumEngagementTypes.includes(contentType)) {
     return 'medium';
   }
-  
+
   return 'medium';
 }
