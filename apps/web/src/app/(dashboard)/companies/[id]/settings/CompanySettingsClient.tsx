@@ -20,7 +20,8 @@ import {
   Clock,
   Globe,
   Sparkles,
-  Brain
+  Brain,
+  Factory
 } from 'lucide-react'
 import LogoCropper from '@/components/ui/LogoCropper'
 import CurrentAnalysisCard from '@/components/intelligence/CurrentAnalysisCard'
@@ -32,7 +33,9 @@ import {
   PillarCard,
   SectionCard,
   SliderInput,
-  ContentPillar
+  IndustrySelector,
+  ContentPillar,
+  IndustryItem
 } from './components'
 
 // ============================================
@@ -161,6 +164,7 @@ const TONE_OPTIONS = [
 ]
 
 const TIMEZONES = [
+  { value: 'Africa/Johannesburg', label: 'South Africa (SAST)' },
   { value: 'UTC', label: 'UTC (Coordinated Universal Time)' },
   { value: 'America/New_York', label: 'Eastern Time (US)' },
   { value: 'America/Chicago', label: 'Central Time (US)' },
@@ -168,10 +172,9 @@ const TIMEZONES = [
   { value: 'America/Los_Angeles', label: 'Pacific Time (US)' },
   { value: 'Europe/London', label: 'London (GMT/BST)' },
   { value: 'Europe/Paris', label: 'Central European Time' },
-  { value: 'Asia/Tokyo', label: 'Japan Standard Time' },
-  { value: 'Asia/Shanghai', label: 'China Standard Time' },
-  { value: 'Australia/Sydney', label: 'Australian Eastern Time' },
-  { value: 'Africa/Johannesburg', label: 'South Africa Standard Time' },
+  { value: 'Asia/Dubai', label: 'Dubai (GST)' },
+  { value: 'Asia/Singapore', label: 'Singapore (SGT)' },
+  { value: 'Australia/Sydney', label: 'Sydney (AEST)' },
 ]
 
 const CONTENT_TYPES = [
@@ -184,6 +187,23 @@ const CONTENT_TYPES = [
   { value: 'tips', label: 'Tips & How-to' },
   { value: 'storytelling', label: 'Storytelling' },
 ]
+
+// ============================================
+// HELPER: Parse extracted industries from JSON
+// ============================================
+
+function parseExtractedIndustries(extracted: unknown): IndustryItem[] {
+  if (!extracted) return []
+  if (Array.isArray(extracted)) {
+    return extracted.map((item: { code?: string; name?: string; category?: string; confidence?: number }) => ({
+      code: item.code || `IND_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+      name: item.name || 'Unknown',
+      category: item.category,
+      confidence: item.confidence,
+    }))
+  }
+  return []
+}
 
 // ============================================
 // MAIN COMPONENT
@@ -200,8 +220,26 @@ export default function CompanySettingsClient({ company, industries }: CompanySe
   const [name, setName] = useState(company.name)
   const [website, setWebsite] = useState(company.website || '')
   const [description, setDescription] = useState(company.description || '')
-  const [industry, setIndustry] = useState(company.industry || '')
   const [logoUrl, setLogoUrl] = useState(company.logoUrl || '')
+  const [logoError, setLogoError] = useState(false)
+
+  // ===== Industries State (Multi-select) =====
+  const [selectedIndustries, setSelectedIndustries] = useState<IndustryItem[]>(() => {
+    // First try to load from extractedIndustries
+    const extracted = parseExtractedIndustries(company.intelligence?.extractedIndustries)
+    if (extracted.length > 0) return extracted
+    
+    // Fallback to legacy single industry field
+    if (company.industry) {
+      return [{
+        code: `LEGACY_${company.industry.replace(/\s+/g, '_').toUpperCase()}`,
+        name: company.industry,
+        category: 'Legacy',
+        confidence: 1.0,
+      }]
+    }
+    return []
+  })
 
   // ===== Brand Voice State =====
   const [brandPersonality, setBrandPersonality] = useState<string[]>(
@@ -235,7 +273,7 @@ export default function CompanySettingsClient({ company, industries }: CompanySe
     (company.intelligence?.preferredTimes as string[]) || ['morning', 'afternoon']
   )
   const [timezone, setTimezone] = useState(
-    company.intelligence?.timezone || 'UTC'
+    company.intelligence?.timezone || 'Africa/Johannesburg'
   )
 
   // ===== Automation State =====
@@ -297,6 +335,7 @@ export default function CompanySettingsClient({ company, industries }: CompanySe
 
       const { logoUrl: newLogoUrl } = await res.json()
       setLogoUrl(newLogoUrl)
+      setLogoError(false)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to upload logo')
     } finally {
@@ -316,7 +355,7 @@ export default function CompanySettingsClient({ company, industries }: CompanySe
     setSuccess(false)
 
     try {
-      // Save company basic info
+      // Save company basic info (keep legacy industry for backward compatibility)
       const companyRes = await fetch(`/api/companies/${company.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -324,7 +363,7 @@ export default function CompanySettingsClient({ company, industries }: CompanySe
           name: name.trim(),
           website: website.trim() || null,
           description: description.trim() || null,
-          industry: industry || null,
+          industry: selectedIndustries[0]?.name || null, // Primary industry for legacy
           logoUrl: logoUrl || null,
         }),
       })
@@ -340,6 +379,14 @@ export default function CompanySettingsClient({ company, industries }: CompanySe
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            // Industries (multi-select)
+            extractedIndustries: selectedIndustries.map(ind => ({
+              code: ind.code,
+              name: ind.name,
+              category: ind.category,
+              confidence: ind.confidence || 1.0,
+            })),
+            industriesConfirmed: true,
             // Brand Voice
             brandPersonality,
             defaultTone,
@@ -542,11 +589,21 @@ export default function CompanySettingsClient({ company, industries }: CompanySe
                 {/* Logo */}
                 <div className="flex items-start gap-6">
                   <div className="relative group">
-                    {logoUrl ? (
-                      <div className="relative w-24 h-24 rounded-xl overflow-hidden border-2 border-[var(--border-default)]">
-                        <Image src={logoUrl} alt={name} fill className="object-cover" />
+                    {logoUrl && !logoError ? (
+                      <div className="relative w-24 h-24 rounded-xl overflow-hidden border-2 border-[var(--border-default)] bg-[var(--bg-secondary)]">
+                        <Image 
+                          src={logoUrl} 
+                          alt={name} 
+                          fill 
+                          className="object-cover"
+                          onError={() => setLogoError(true)}
+                          unoptimized={logoUrl.includes('blob.vercel-storage.com')}
+                        />
                         <button
-                          onClick={() => setLogoUrl('')}
+                          onClick={() => {
+                            setLogoUrl('')
+                            setLogoError(false)
+                          }}
                           className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
                         >
                           <X size={12} />
@@ -564,10 +621,13 @@ export default function CompanySettingsClient({ company, industries }: CompanySe
                       <input type="file" accept="image/*" onChange={handleFileSelect} className="hidden" disabled={uploading} />
                       <span className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[var(--bg-tertiary)] text-sm font-medium text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] border border-[var(--border-default)] transition-colors">
                         {uploading ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
-                        {uploading ? 'Uploading...' : logoUrl ? 'Change Logo' : 'Upload Logo'}
+                        {uploading ? 'Uploading...' : logoUrl && !logoError ? 'Change Logo' : 'Upload Logo'}
                       </span>
                     </label>
                     <p className="text-xs text-[var(--text-tertiary)] mt-2">PNG, JPG or GIF • Max 10MB</p>
+                    {logoError && (
+                      <p className="text-xs text-amber-500 mt-1">Current logo failed to load. Please upload a new one.</p>
+                    )}
                   </div>
                 </div>
 
@@ -593,26 +653,19 @@ export default function CompanySettingsClient({ company, industries }: CompanySe
                       type="text"
                       value={website}
                       onChange={(e) => setWebsite(e.target.value)}
-                      placeholder="example.com"
+                      placeholder="https://example.com"
                       className="w-full pl-11 pr-4 py-2.5 rounded-xl bg-[var(--bg-primary)] border border-[var(--border-default)] text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20"
                     />
                   </div>
                 </div>
 
-                {/* Industry */}
-                <div>
-                  <label className="block text-sm font-medium text-[var(--text-primary)] mb-1.5">Industry</label>
-                  <select
-                    value={industry}
-                    onChange={(e) => setIndustry(e.target.value)}
-                    className="w-full px-4 py-2.5 rounded-xl bg-[var(--bg-primary)] border border-[var(--border-default)] text-[var(--text-primary)] focus:outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20"
-                  >
-                    <option value="">Select industry...</option>
-                    {industries.map((ind) => (
-                      <option key={ind.id} value={ind.industry}>{ind.industry}</option>
-                    ))}
-                  </select>
-                </div>
+                {/* Industry - Multi-select */}
+                <IndustrySelector
+                  selectedIndustries={selectedIndustries}
+                  onChange={setSelectedIndustries}
+                  label="Industries"
+                  maxIndustries={5}
+                />
 
                 {/* Description */}
                 <div>
@@ -670,7 +723,7 @@ export default function CompanySettingsClient({ company, industries }: CompanySe
                     onClick={() => setDefaultTone(tone.value)}
                     size="md"
                   >
-                    <p className="font-semibold text-sm">{tone.label}</p>
+                    <p className="font-semibold text-sm text-[var(--text-primary)]">{tone.label}</p>
                     <p className="text-xs text-[var(--text-tertiary)] mt-0.5">{tone.description}</p>
                   </SelectionCard>
                 ))}
@@ -693,12 +746,12 @@ export default function CompanySettingsClient({ company, industries }: CompanySe
             <SectionCard
               title="Target Audience"
               description="Who are you trying to reach?"
-              icon={<Building2 size={20} className="text-blue-600" />}
+              icon={<Factory size={20} className="text-blue-600" />}
             >
               <textarea
                 value={targetAudience}
                 onChange={(e) => setTargetAudience(e.target.value)}
-                placeholder="Describe your ideal customer or audience..."
+                placeholder="Describe your ideal customer or audience (e.g., Mining procurement managers, Government tender offices, Engineering firms in Gauteng...)"
                 rows={3}
                 className="w-full px-4 py-3 rounded-xl bg-[var(--bg-primary)] border border-[var(--border-default)] text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 resize-none"
               />
@@ -797,7 +850,7 @@ export default function CompanySettingsClient({ company, industries }: CompanySe
                     }}
                     size="md"
                   >
-                    <p className="font-semibold text-sm">{slot.label}</p>
+                    <p className="font-semibold text-sm text-[var(--text-primary)]">{slot.label}</p>
                     <p className="text-xs text-[var(--text-tertiary)] mt-0.5">{slot.description}</p>
                   </SelectionCard>
                 ))}
@@ -923,14 +976,14 @@ export default function CompanySettingsClient({ company, industries }: CompanySe
                     >
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-lg bg-[var(--bg-tertiary)] flex items-center justify-center">
-                          {platform.type === 'linkedin' && <span className="text-blue-600 font-bold text-sm">in</span>}
-                          {platform.type === 'facebook' && <span className="text-blue-500 font-bold text-sm">f</span>}
-                          {platform.type === 'instagram' && <span className="text-pink-600 font-bold text-sm">ig</span>}
-                          {platform.type === 'twitter' && <span className="text-sky-500 font-bold text-sm">X</span>}
+                          {platform.type.toLowerCase() === 'linkedin' && <span className="text-blue-600 font-bold text-sm">in</span>}
+                          {platform.type.toLowerCase() === 'facebook' && <span className="text-blue-500 font-bold text-sm">f</span>}
+                          {platform.type.toLowerCase() === 'instagram' && <span className="text-pink-600 font-bold text-sm">ig</span>}
+                          {platform.type.toLowerCase() === 'twitter' && <span className="text-sky-500 font-bold text-sm">X</span>}
                         </div>
                         <div>
-                          <p className="text-sm font-medium">{platform.platformName}</p>
-                          <p className="text-xs text-[var(--text-tertiary)] capitalize">{platform.type}</p>
+                          <p className="text-sm font-medium text-[var(--text-primary)]">{platform.platformName}</p>
+                          <p className="text-xs text-[var(--text-tertiary)] capitalize">{platform.type.toLowerCase()}</p>
                         </div>
                       </div>
                       <span className="px-2 py-1 rounded-md bg-green-500/10 text-green-600 text-xs font-medium">
@@ -1006,7 +1059,7 @@ export default function CompanySettingsClient({ company, industries }: CompanySe
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-[var(--bg-elevated)] rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <div className="px-6 py-4 border-b border-[var(--border-subtle)] flex items-center justify-between">
-              <h3 className="font-semibold text-lg">
+              <h3 className="font-semibold text-lg text-[var(--text-primary)]">
                 {editingPillar.id.startsWith('new-') ? 'Add Content Pillar' : 'Edit Content Pillar'}
               </h3>
               <button
@@ -1014,7 +1067,7 @@ export default function CompanySettingsClient({ company, industries }: CompanySe
                   setShowPillarModal(false)
                   setEditingPillar(null)
                 }}
-                className="p-2 rounded-lg hover:bg-[var(--bg-tertiary)] transition-colors"
+                className="p-2 rounded-lg hover:bg-[var(--bg-tertiary)] transition-colors text-[var(--text-secondary)]"
               >
                 <X size={18} />
               </button>
@@ -1045,7 +1098,7 @@ export default function CompanySettingsClient({ company, industries }: CompanySe
 
               {/* Content Types */}
               <div>
-                <label className="block text-sm font-medium mb-3">Content Types</label>
+                <label className="block text-sm font-medium text-[var(--text-primary)] mb-3">Content Types</label>
                 <div className="grid grid-cols-2 gap-2">
                   {CONTENT_TYPES.map((type) => (
                     <SelectionCard
@@ -1066,7 +1119,7 @@ export default function CompanySettingsClient({ company, industries }: CompanySe
                       }}
                       size="sm"
                     >
-                      <span className="text-sm">{type.label}</span>
+                      <span className="text-sm text-[var(--text-primary)]">{type.label}</span>
                     </SelectionCard>
                   ))}
                 </div>
